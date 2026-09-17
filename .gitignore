@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# C++ / сборка
+build/
+*.o
+*.out
+*.elf
+*.bin
+
+# PlatformIO
+.pio/
+
+# IDE / системные файлы
+.vscode/*
+!.vscode/launch.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Логи и временные файлы
+*.log
+*.tmp
