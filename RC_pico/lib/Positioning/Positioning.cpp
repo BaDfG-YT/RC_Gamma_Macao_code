@@ -1,66 +1,47 @@
+#pragma once
 #include <Arduino.h>
-#include <string.h>
-#include <stdlib.h>
 
-#include <Sharing.h>
-#include <Positioning.h>
+extern float g_ball_angle;
+extern int g_ball_area;
+extern unsigned long g_last_ball_ms;
+extern int g_ball_radius;
 
-// =========================
-// Camera: red target (кегли)
-// Протокол с Pi 5: "RED,<dx>,<area>\n"
-//   dx   - отклонение центра масс красного от центра кадра по ширине, px
-//          (минус = цель левее центра, плюс = правее)
-//   area - количество красных пикселей после фильтрации
-// =========================
+extern float g_yellow_angle;
+extern int g_yellow_area;
+extern unsigned long g_last_yellow_ms;
 
-float g_red_dx = 0.0f;              // отклонение по ширине, px
-int g_red_area = 0;                 // площадь красного
-unsigned long g_last_red_ms = 0;    // millis() последнего пакета
-bool g_red_visible = false;
+extern float g_blue_angle;
+extern int g_blue_area;
+extern unsigned long g_last_blue_ms;
 
-// Pi шлёт dx=9999, если красного нет в кадре
-static const float NO_TARGET_DX = 9999.0f;
-static const float DX_VALID_ABS = 1000.0f;
+extern bool g_ball_visible;
+extern bool g_yellow_visible;
+extern bool g_blue_visible;
 
-// Сколько мс без пакетов считаем камеру потерянной
-static const unsigned long CAM_TIMEOUT_MS = 500;
+void pos_init();
+void pos_read_cam();
+void procces_cam(char *line);
 
-void procces_cam(char *line)
-{
-    char *cmd = strtok(line, ",");
-    char *dxStr = strtok(nullptr, ",");
-    char *areaStr = strtok(nullptr, ",");
+float getYawDeg();
+float getYawSignedDeg();
 
-    if (cmd == nullptr || dxStr == nullptr || areaStr == nullptr)
-        return;
+// === Камера ===
+void procces_cam(char *line);
 
-    if (strcmp(cmd, "RED") != 0)
-        return;
+// === Лидар (poses, target, drive command) ===
+void procces_lidar(char *line);
 
-    float dx = atof(dxStr);
-    int area = atoi(areaStr);
+// Pose from lidar
+extern bool  g_pose_valid;
+extern float g_pose_x;
+extern float g_pose_y;
+extern float g_target_dist;
+extern float g_target_x;
+extern float g_target_y;
+extern unsigned long g_last_pose_ms;
 
-    g_red_dx = dx;
-    g_red_area = area;
-    g_last_red_ms = millis();
-    g_red_visible = (fabsf(dx) <= DX_VALID_ABS) && (area > 0);
-}
-
-void pos_read_cam()
-{
-    char line[64];
-
-    while (share_read_line(line, sizeof(line)))
-    {
-        procces_cam(line);
-    }
-
-    // если пакеты перестали приходить - цель невалидна
-    if (millis() - g_last_red_ms > CAM_TIMEOUT_MS)
-        g_red_visible = false;
-}
-
-void pos_init()
-{
-    share_init();
-}
+// Drive command from lidar
+extern float g_cmd_angle;
+extern int   g_arrived;
+extern float g_robot_yaw;
+extern unsigned long g_last_cmd_ms;

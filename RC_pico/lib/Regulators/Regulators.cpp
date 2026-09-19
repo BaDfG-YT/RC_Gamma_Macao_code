@@ -1,34 +1,21 @@
 #include "Regulators.h"
 
 // =============================================================
-// PID
+// PD
 // =============================================================
 
-float pid_reg(PID &s, float e, float kp, float ki, float kd, float i_limit)
+float pd_reg(PD &s, float e, float kp, float kd)
 {
-    unsigned long dt = millis() - s.t;
-
-    // интегрируем и обновляем D только на "тиках" (не чаще раза в 3 мс) -
-    // та же логика квантования, что была в старом pd_reg
-    if (dt >= 3)
-    {
-        s.integral += e * dt;   // накопление в единицах "ошибка * мс"
-        s.integral = constrain(s.integral, -i_limit, i_limit);
-    }
-
-    float u = e * kp + s.integral * ki + (e - s.e_old) * kd;
-
-    if (dt >= 3)
+    float u = e * kp + (e - s.e_old) * kd;
+    if (millis() - s.t >= 3)
         s.e_old = e;
     s.t = millis();
-
     return u;
 }
 
-void pid_reset(PID &s)
+void pd_reset(PD &s)
 {
     s.e_old = 0.0f;
-    s.integral = 0.0f;
     s.t = millis();
 }
 
@@ -51,10 +38,12 @@ int median_push(MedianFilter &f, int value)
     f.idx = (f.idx + 1) % f.win;
     if (f.filled < f.win) f.filled++;
 
+    // копируем и сортируем
     int tmp[FILTER_MAX_WIN];
     for (int i = 0; i < f.filled; i++)
         tmp[i] = f.buf[i];
 
+    // вставка
     for (int i = 1; i < f.filled; i++)
     {
         int key = tmp[i];
