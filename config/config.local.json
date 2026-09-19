@@ -2,8 +2,7 @@
   "role": "striker",
 
   "team": {
-    "color": null,
-    "defending_goal": null
+    "defending_goal": "blue"
   },
 
   "coefficients": {
