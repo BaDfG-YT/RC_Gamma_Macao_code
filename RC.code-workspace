@@ -11,7 +11,7 @@
 		"VsCodeTaskButtons.tasks": [
 			{
 				"label": "📟 Main",
-				"task": "Flash via Pi",
+				"task": "flash main",
 				"tooltip": "Build + прошивка через Pi 5"
 			},
 			{
