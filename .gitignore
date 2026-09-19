@@ -23,6 +23,9 @@ Thumbs.db
 desktop.ini
 .claude/
 
+# архивы ini
+toolchain-cache/
+
 # Логи и временные файлы
 *.log
 *.tmp
