@@ -10,31 +10,6 @@
       "turn_gain": 0.8,
       "brake_power": 0.6
     },
-    "vision": {
-      "frame": {
-        "w_high": 2592,
-        "h_high": 1944,
-        "w_game": 1280,
-        "h_game": 720
-      },
-      "ball_detection": {
-        "h_min": 0,
-        "s_min": 4,
-        "v_min": 4,
-        "h_max": 20,
-        "s_max": 4,
-        "v_max": 4,
-        "min_ball_area": 20
-      },
-      "accessible zone": {
-        "xc": 640,
-        "yc": 360,
-        "rad_sml": 100,
-        "rad_big": 200
-      },
-      "ball_detection_threshold": 0.6,
-      "camera_exposure": 100
-    },
     "positioning": {
       "home_x": 0,
       "home_y": 0,
@@ -47,17 +22,143 @@
       "pid_kd": 0.1
     }
   },
-  "calibration": {
-    "compass_offset": 0,
-    "motor_trim": [
-      0,
-      0,
-      0,
-      0
-    ],
-    "camera_offset_x": 0,
-    "camera_offset_y": 0
+  "vision": {
+    "frame": {
+      "high": { "w": 2592, "h": 1944 },
+      "game": { "w": 1280, "h": 720 }
+    },
+    "detection": {
+      "ball": {
+        "hsv": [
+          [0, 100, 100],
+          [10, 255, 255]
+        ],
+        "min_area": 20
+      },
+      "gateB": {
+        "hsv": [
+          [0, 100, 100],
+          [10, 255, 255]
+        ],
+        "min_area": 20
+      },
+      "gateY": {
+        "hsv": [
+          [0, 100, 100],
+          [10, 255, 255]
+        ],
+        "min_area": 20
+      },
+      "no_target_angle": 400,
+      "target_visible_max_angle": 200,
+      "ball_mask_default": {
+        "hsv": [
+          [2, 85, 90],
+          [22, 180, 255]
+        ],
+        "min_area": 50
+      },
+      "gateY_default": {
+        "hsv": [
+          [20, 120, 195],
+          [32, 255, 255]
+        ],
+        "min_area": 200
+      },
+      "gateB_default": {
+        "hsv": [
+          [90, 73, 80],
+          [134, 255, 255]
+        ],
+        "min_area": 200
+      },
+      "morphology": {
+        "median_blur": 5,
+        "open_kernel": 5,
+        "close_kernel": 7
+      }
+    },
+    "accessible zone": {
+      "xc": 640,
+      "yc": 360,
+      "rad_sml": 100,
+      "rad_big": 200
+    },
+    "center_offset": [0, 0],
+    "ball_detection_threshold": 0.6,
+    "camera_exposure": 100
   },
+  "field": {
+    "width": 1822,
+    "height": 2432
+  },
+  "lidar": {
+    "port": "/dev/ttyUSB0",
+    "baud": null,
+    "offset_x": 0.0,
+    "offset_y": 0.0,
+    "min_range_mm": 92.0,
+    "max_range_mm": 3000.0,
+    "update_period": 0.05,
+    "keep_last_scans": 1,
+    "clear_on_wrap": false,
+    "max_points_for_pose": 2000,
+    "max_points_to_draw": 500,
+    "crc_init": 216,
+    "crc_table": [
+      0, 77, 154, 215, 121, 52, 227, 174, 242, 191, 104, 37, 139, 198, 17, 92,
+      169, 228, 51, 126, 208, 157, 74, 7, 91, 22, 193, 140, 34, 111, 184, 245,
+      31, 82, 133, 200, 102, 43, 252, 177, 237, 160, 119, 58, 148, 217, 14, 67,
+      182, 251, 44, 97, 207, 130, 85, 24, 68, 9, 222, 147, 61, 112, 167, 234,
+      62, 115, 164, 233, 71, 10, 221, 144, 204, 129, 86, 27, 181, 248, 47, 98,
+      151, 218, 13, 64, 238, 163, 116, 57, 101, 40, 255, 178, 28, 81, 134, 203,
+      33, 108, 187, 246, 88, 21, 194, 143, 211, 158, 73, 4, 170, 231, 48, 125,
+      136, 197, 18, 95, 241, 188, 107, 38, 122, 55, 224, 173, 3, 78, 153, 212,
+      124, 49, 230, 171, 5, 72, 159, 210, 142, 195, 20, 89, 247, 186, 109, 32,
+      213, 152, 79, 2, 172, 225, 54, 123, 39, 106, 189, 240, 94, 19, 196, 137,
+      99, 46, 249, 180, 26, 87, 128, 205, 145, 220, 11, 70, 232, 165, 114, 63,
+      202, 135, 80, 29, 179, 254, 41, 100, 56, 117, 162, 239, 65, 12, 219, 150,
+      66, 15, 216, 149, 59, 118, 161, 236, 176, 253, 42, 103, 201, 132, 83, 30,
+      235, 166, 113, 60, 146, 223, 8, 69, 25, 84, 131, 206, 96, 45, 250, 183,
+      93, 16, 199, 138, 36, 105, 190, 243, 175, 226, 53, 120, 214, 155, 76, 1,
+      244, 185, 110, 35, 141, 192, 23, 90, 6, 75, 156, 209, 127, 50, 229, 168
+    ]
+  },
+  "pose_estimation": {
+    "wall_bin_mm": 80.0,
+    "wall_band_mm": 120.0,
+    "min_wall_peak": 15,
+    "swap_penalty_gain": 30,
+    "min_points": 30,
+    "robot_yaw_offset_deg": 0,
+    "robot_yaw_sign": 1.0,
+    "smoothing": {
+      "alpha_xy": 0.4,
+      "alpha_yaw": 0.2,
+      "max_step_xy": 50.0,
+      "max_step_yaw": 60.0
+    }
+  },
+  "pose_sanity": {
+    "period_s": 1.0,
+    "flip_threshold_deg": 90.0,
+    "min_dist_mm": 300.0,
+    "cooldown_s": 2.0,
+    "camera_max_age_s": 2.0
+  },
+  "web": {
+    "lidar_port": 8000,
+    "camera_port": 5000,
+    "host": "0.0.0.0"
+  },
+  "pico": {
+    "port": "/dev/ttyACM0",
+    "baud": 115200,
+    "send_period": 0.05,
+    "tx_queue_max": 20,
+    "reset_delay": 2.0
+  },
+  "calibration": {},
   "flags": {
     "goalkeeper_hysteresis_enabled": true,
     "debug_mode": false
