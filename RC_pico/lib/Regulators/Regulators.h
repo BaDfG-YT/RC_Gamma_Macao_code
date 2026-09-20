@@ -3,26 +3,24 @@
 #include <Arduino.h>
 
 // =============================================================
-// PID-регулятор
+// PD-регулятор
 // =============================================================
 //
 // Использование:
-//   PID pid_ball;
+//   PD pd_ball;
 //   ...
-//   float u = pid_reg(pid_ball, error, kp, ki, kd);
+//   float u = pd_reg(pd_ball, error, kp, kd);
 //
-// pid_reset(pid_ball);  // при потере цели - сбрасывает D и накопленный интеграл
+// pd_reset(pd_ball);  // при потере цели, чтобы D-составляющая не дёрнула
 
-struct PID
+struct PD
 {
     float e_old;
     unsigned long t;
-    float integral;
 };
 
-float pid_reg(PID &s, float e, float kp, float ki, float kd,
-              float i_limit = 1000.0f);   // anti-windup: |integral| <= i_limit
-void  pid_reset(PID &s);
+float pd_reg(PD &s, float e, float kp, float kd);
+void  pd_reset(PD &s);
 
 // =============================================================
 // Скользящее окно (медиана / среднее)

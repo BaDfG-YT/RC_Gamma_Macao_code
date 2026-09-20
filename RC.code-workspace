@@ -7,5 +7,18 @@
 			"path": "RC_pico"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"VsCodeTaskButtons.tasks": [
+			{
+				"label": "📟 Main",
+				"task": "flash main",
+				"tooltip": "Build + прошивка через Pi 5"
+			},
+			{
+				"label": "📟 Troll",
+				"task": "troll",
+				"tooltip": "trolololo"
+			}
+		]
+	}
 }

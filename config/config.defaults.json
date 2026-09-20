@@ -1,0 +1,66 @@
+{
+  "role": "striker",
+  "team": {
+    "defending_goal": "blue"
+  },
+  "coefficients": {
+    "movement": {
+      "max_speed": 1.0,
+      "acceleration": 0.5,
+      "turn_gain": 0.8,
+      "brake_power": 0.6
+    },
+    "vision": {
+      "frame": {
+        "w_high": 2592,
+        "h_high": 1944,
+        "w_game": 1280,
+        "h_game": 720
+      },
+      "ball_detection": {
+        "h_min": 0,
+        "s_min": 4,
+        "v_min": 4,
+        "h_max": 20,
+        "s_max": 4,
+        "v_max": 4,
+        "min_ball_area": 20
+      },
+      "accessible zone": {
+        "xc": 640,
+        "yc": 360,
+        "rad_sml": 100,
+        "rad_big": 200
+      },
+      "ball_detection_threshold": 0.6,
+      "camera_exposure": 100
+    },
+    "positioning": {
+      "home_x": 0,
+      "home_y": 0,
+      "defense_radius": 30,
+      "attack_radius": 150
+    },
+    "regulators": {
+      "pid_kp": 1.0,
+      "pid_ki": 0.0,
+      "pid_kd": 0.1
+    }
+  },
+  "calibration": {
+    "compass_offset": 0,
+    "motor_trim": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "camera_offset_x": 0,
+    "camera_offset_y": 0
+  },
+  "flags": {
+    "goalkeeper_hysteresis_enabled": true,
+    "debug_mode": false
+  },
+  "last_updated": null
+}
