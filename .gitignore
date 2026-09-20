@@ -15,10 +15,16 @@ build/
 # PlatformIO
 .pio/
 
-# IDE / системные файлы
+# Корневой .vscode (Python-проект RC)
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# .vscode внутри RC_pico (PlatformIO-проект)
 RC_pico/.vscode/*
 !RC_pico/.vscode/launch.json
-!RC_pico/.vscode/tasks.json
+
+# IDE / системные файлы
 .DS_Store
 Thumbs.db
 desktop.ini
