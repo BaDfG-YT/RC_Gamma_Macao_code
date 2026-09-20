@@ -10,6 +10,7 @@ from collections import deque
 
 import numpy as np
 import lidar_cfg
+from config_io import load_config
 import serial
 from serial.tools import list_ports
 from flask import Flask, Response
@@ -73,25 +74,33 @@ class LD19Protocol:
 # Конфигурация поля и т.д. — без изменений
 # =====================================================================
 
-FIELD_W = 1822.0
-FIELD_H = 2432.0
+CFG = load_config()
+_LIDAR = CFG["lidar"]
+_POSE = CFG["pose_estimation"]
+_SMOOTH = _POSE["smoothing"]
+_SANITY = CFG["pose_sanity"]
+_DET = CFG["vision"]["detection"]
+_MORPH = _DET["morphology"]
 
-# FIELD_W = 1060.0
-# FIELD_H = 1330.0
+FIELD_W = float(CFG["field"]["width"])
+FIELD_H = float(CFG["field"]["height"])
 
-LIDAR_OFFSET_X = 0.0
-LIDAR_OFFSET_Y = 0.0
+LIDAR_OFFSET_X = float(_LIDAR["offset_x"])
+LIDAR_OFFSET_Y = float(_LIDAR["offset_y"])
 
 TARGET_X = FIELD_W / 2
 TARGET_Y = FIELD_H / 2
 
-PICO_PORT = "/dev/ttyACM0"
-PICO_BAUD = 115200
+PICO_PORT = CFG["pico"]["port"]
+PICO_BAUD = int(CFG["pico"]["baud"])
+PICO_SEND_PERIOD = float(CFG["pico"]["send_period"])
+PICO_TX_QUEUE_MAX = int(CFG["pico"]["tx_queue_max"])
+PICO_RESET_DELAY = float(CFG["pico"]["reset_delay"])
 ENABLE_LIDAR_VISUALIZATION = True
 
 ENABLE_CAMERA_SENDING = True
 ENABLE_CAMERA_VISUALIZATION = False
-CAMERA_WEB_PORT = 5000
+CAMERA_WEB_PORT = int(CFG["web"]["camera_port"])
 
 CAM_FRAME_LOCK = threading.Lock()
 CAM_FRAME_JPEG = None
@@ -99,36 +108,37 @@ CAM_FRAME_JPEG = None
 FRAME_W = 640
 FRAME_H = 480
 
-CENTER_X = FRAME_W / 2 - 18
-CENTER_Y = FRAME_H / 2 + 30
+CENTER_X = FRAME_W / 2 + CFG["vision"]["center_offset"][0]
+CENTER_Y = FRAME_H / 2 + CFG["vision"]["center_offset"][1]
 
-BALL_LOWER = np.array([2, 85, 90])
-BALL_UPPER = np.array([22, 180, 255])
-BALL_MIN_AREA = 50
 
-YELLOW_LOWER = np.array([20, 120, 195])
-YELLOW_UPPER = np.array([32, 255, 255])
+def _hsv(name):
+    lo, hi = _DET[name]["hsv"]
+    return np.array(lo), np.array(hi), int(_DET[name]["min_area"])
 
-YELLOW_MIN_AREA = 200
 
-BLUE_LOWER = np.array([90, 73, 80])
-BLUE_UPPER = np.array([134, 255, 255])
-BLUE_MIN_AREA = 200
+BALL_LOWER, BALL_UPPER, BALL_MIN_AREA = _hsv("ball")
+YELLOW_LOWER, YELLOW_UPPER, YELLOW_MIN_AREA = _hsv("gateY")
+BLUE_LOWER, BLUE_UPPER, BLUE_MIN_AREA = _hsv("gateB")
 
-NO_TARGET_ANGLE = 400.0
+NO_TARGET_ANGLE = float(_DET["no_target_angle"])
+TARGET_VISIBLE_MAX_ANGLE = float(_DET["target_visible_max_angle"])
 
-CAM_SEND_PERIOD = 0.05
+CAM_SEND_PERIOD = PICO_SEND_PERIOD
 
-UPDATE_PERIOD = 0.05
-CLEAR_ON_WRAP = False
-MAX_POINTS_FOR_POSE = 2000
-MAX_POINTS_TO_DRAW = 500
+UPDATE_PERIOD = float(_LIDAR["update_period"])
+CLEAR_ON_WRAP = bool(_LIDAR["clear_on_wrap"])
+MAX_POINTS_FOR_POSE = int(_LIDAR["max_points_for_pose"])
+MAX_POINTS_TO_DRAW = int(_LIDAR["max_points_to_draw"])
+LIDAR_MIN_RANGE_MM = float(_LIDAR["min_range_mm"])
+LIDAR_MAX_RANGE_MM = float(_LIDAR["max_range_mm"])
 # === Pose sanity check ===
-OWN_GOAL_COLOR = "blue"  # будет переписан из args в main()
-POSE_SANITY_PERIOD_S = 1.0
-POSE_SANITY_FLIP_THRESHOLD_DEG = 90.0
-POSE_SANITY_MIN_DIST_MM = 300.0  # ближе этого к воротам не проверяем
-POSE_SANITY_COOLDOWN_S = 2.0  # после флипа подождать прежде чем снова проверять
+OWN_GOAL_COLOR = CFG["team"]["defending_goal"]  # может быть переписан из --own-color
+POSE_SANITY_PERIOD_S = float(_SANITY["period_s"])
+POSE_SANITY_FLIP_THRESHOLD_DEG = float(_SANITY["flip_threshold_deg"])
+POSE_SANITY_MIN_DIST_MM = float(_SANITY["min_dist_mm"])  # ближе этого к воротам не проверяем
+POSE_SANITY_COOLDOWN_S = float(_SANITY["cooldown_s"])  # после флипа подождать
+POSE_SANITY_CAM_MAX_AGE_S = float(_SANITY["camera_max_age_s"])
 
 CAM_STATE_LOCK = threading.Lock()
 CAM_STATE = {
@@ -139,12 +149,13 @@ CAM_STATE = {
     "ts": 0.0,
 }
 
-WALL_BIN_MM = 80.0
-WALL_BAND_MM = 120.0
-MIN_WALL_PEAK = 15
-SWAP_PENALTY_GAIN = 30
+WALL_BIN_MM = float(_POSE["wall_bin_mm"])
+WALL_BAND_MM = float(_POSE["wall_band_mm"])
+MIN_WALL_PEAK = int(_POSE["min_wall_peak"])
+SWAP_PENALTY_GAIN = float(_POSE["swap_penalty_gain"])
+MIN_POSE_POINTS = int(_POSE["min_points"])
 
-KEEP_LAST_SCANS = 1
+KEEP_LAST_SCANS = int(_LIDAR["keep_last_scans"])
 
 # =====================================================================
 # Вспомогательные функции — без изменений
@@ -187,8 +198,8 @@ def wrap360(a):
     return a
 
 
-ROBOT_YAW_OFFSET_DEG = -90.0
-ROBOT_YAW_SIGN = 1.0
+ROBOT_YAW_OFFSET_DEG = float(_POSE["robot_yaw_offset_deg"])
+ROBOT_YAW_SIGN = float(_POSE["robot_yaw_sign"])
 
 
 def field_yaw_to_robot_yaw(field_yaw_deg):
@@ -339,8 +350,8 @@ def pico_queue_line(line):
         line += "\n"
     with PICO_TX_LOCK:
         PICO_TX_LINES.append(line)
-        if len(PICO_TX_LINES) > 20:
-            PICO_TX_LINES = PICO_TX_LINES[-20:]
+        if len(PICO_TX_LINES) > PICO_TX_QUEUE_MAX:
+            PICO_TX_LINES = PICO_TX_LINES[-PICO_TX_QUEUE_MAX:]
 
 
 def estimate_main_angles(points_xy):
@@ -364,7 +375,7 @@ def estimate_main_angles(points_xy):
 
 
 def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
-    if points_xy.shape[0] < 30:
+    if points_xy.shape[0] < MIN_POSE_POINTS:
         return None
 
     best = None
@@ -593,10 +604,10 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 def smooth_pose(
     prev_pose,
     new_pose,
-    alpha_xy=0.4,
-    alpha_yaw=0.2,
-    max_step_xy=60.0,
-    max_step_yaw=180.0,
+    alpha_xy=_SMOOTH["alpha_xy"],
+    alpha_yaw=_SMOOTH["alpha_yaw"],
+    max_step_xy=_SMOOTH["max_step_xy"],
+    max_step_yaw=_SMOOTH["max_step_yaw"],
 ):
     if new_pose is None:
         return prev_pose
@@ -753,7 +764,7 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
                                     full_pts = np.vstack(parts)
 
                                     rr = np.linalg.norm(full_pts, axis=1)
-                                    m = (rr > 90.0) & (rr < 2800.0)
+                                    m = (rr > LIDAR_MIN_RANGE_MM) & (rr < LIDAR_MAX_RANGE_MM)
                                     full_pts = full_pts[m]
 
                                     if full_pts.shape[0] > MAX_POINTS_FOR_POSE:
@@ -841,11 +852,11 @@ def pico_sender_worker(stop_evt):
         try:
             if ser is None or not ser.is_open:
                 ser = serial.Serial(PICO_PORT, PICO_BAUD, timeout=0.1)
-                time.sleep(2.0)
+                time.sleep(PICO_RESET_DELAY)
 
             now = time.time()
 
-            if now - last_cmd_send >= 0.05:
+            if now - last_cmd_send >= PICO_SEND_PERIOD:
                 angle = NAV_STATE["cmd_angle"]
                 arrived = NAV_STATE["arrived"]
 
@@ -1144,9 +1155,9 @@ def compute_angle_360(cx, cy, center_x, center_y):
 
 def preprocess_mask(hsv, lower, upper):
     mask = cv2.inRange(hsv, lower, upper)
-    mask = cv2.medianBlur(mask, 5)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+    mask = cv2.medianBlur(mask, int(_MORPH["median_blur"]))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((_MORPH["open_kernel"],) * 2, np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((_MORPH["close_kernel"],) * 2, np.uint8))
     return mask
 
 
@@ -1331,9 +1342,9 @@ def camera_worker(stop_evt):
 
             with CAM_STATE_LOCK:
                 CAM_STATE["yellow_angle"] = yellow_angle
-                CAM_STATE["yellow_visible"] = abs(yellow_angle) <= 200.0
+                CAM_STATE["yellow_visible"] = abs(yellow_angle) <= TARGET_VISIBLE_MAX_ANGLE
                 CAM_STATE["blue_angle"] = blue_angle
-                CAM_STATE["blue_visible"] = abs(blue_angle) <= 200.0
+                CAM_STATE["blue_visible"] = abs(blue_angle) <= TARGET_VISIBLE_MAX_ANGLE
                 CAM_STATE["ts"] = time.time()
 
             pico_queue_line(f"BALL,{ball_angle:.2f},{ball_area}")
@@ -1397,7 +1408,7 @@ def camera_stream():
 def camera_web_worker(stop_evt):
     if not ENABLE_CAMERA_VISUALIZATION:
         return
-    camera_app.run(host="0.0.0.0", port=CAMERA_WEB_PORT, threaded=True)
+    camera_app.run(host=CFG["web"]["host"], port=CAMERA_WEB_PORT, threaded=True)
 
 
 # =====================================================================
@@ -1430,7 +1441,7 @@ def pose_sanity_worker(stop_evt):
         # 2. snapshot камеры
         with CAM_STATE_LOCK:
             cam = dict(CAM_STATE)
-        if now - cam["ts"] > 2.0:
+        if now - cam["ts"] > POSE_SANITY_CAM_MAX_AGE_S:
             continue  # камера давно не отдавала кадров
 
         # 3. выбрать угол своих ворот
@@ -1489,19 +1500,19 @@ def main():
     ap.add_argument("--auto", action="store_true")
     ap.add_argument("--vid", type=str)
     ap.add_argument("--pid", type=str)
-    ap.add_argument("--port", default="/dev/ttyUSB0")
+    ap.add_argument("--port", default=_LIDAR["port"])
     ap.add_argument(
         "--baud",
         type=int,
-        default=None,
-        help="по умолчанию: 230400 (LD19)",
+        default=_LIDAR["baud"],
+        help="по умолчанию: lidar.baud из конфига, иначе 230400 (LD19)",
     )
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--web-port", type=int, default=8000)
+    ap.add_argument("--host", default=CFG["web"]["host"])
+    ap.add_argument("--web-port", type=int, default=CFG["web"]["lidar_port"])
     ap.add_argument(
         "--own-color",
         choices=["blue", "yellow"],
-        default="blue",
+        default=CFG["team"]["defending_goal"],
         help="Цвет защищаемых ворот (должен совпадать с gk_own_goal_color на Pico)",
     )
     args = ap.parse_args()

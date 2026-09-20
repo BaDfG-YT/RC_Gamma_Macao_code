@@ -30,48 +30,27 @@
     "detection": {
       "ball": {
         "hsv": [
-          [0, 100, 100],
-          [10, 255, 255]
-        ],
-        "min_area": 20
-      },
-      "gateB": {
-        "hsv": [
-          [0, 100, 100],
-          [10, 255, 255]
-        ],
-        "min_area": 20
-      },
-      "gateY": {
-        "hsv": [
-          [0, 100, 100],
-          [10, 255, 255]
-        ],
-        "min_area": 20
-      },
-      "no_target_angle": 400,
-      "target_visible_max_angle": 200,
-      "ball_mask_default": {
-        "hsv": [
           [2, 85, 90],
           [22, 180, 255]
         ],
         "min_area": 50
       },
-      "gateY_default": {
-        "hsv": [
-          [20, 120, 195],
-          [32, 255, 255]
-        ],
-        "min_area": 200
-      },
-      "gateB_default": {
+      "gateB": {
         "hsv": [
           [90, 73, 80],
           [134, 255, 255]
         ],
         "min_area": 200
       },
+      "gateY": {
+        "hsv": [
+          [20, 120, 195],
+          [32, 255, 255]
+        ],
+        "min_area": 200
+      },
+      "no_target_angle": 400,
+      "target_visible_max_angle": 200,
       "morphology": {
         "median_blur": 5,
         "open_kernel": 5,
@@ -84,7 +63,7 @@
       "rad_sml": 100,
       "rad_big": 200
     },
-    "center_offset": [0, 0],
+    "center_offset": [-18, 30],
     "ball_detection_threshold": 0.6,
     "camera_exposure": 100
   },
