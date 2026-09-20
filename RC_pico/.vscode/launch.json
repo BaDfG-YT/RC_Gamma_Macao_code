@@ -12,22 +12,22 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
-            "projectEnvName": "main",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/read_uart/firmware.elf",
+            "projectEnvName": "read_uart",
             "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",
             "preLaunchTask": {
                 "type": "PlatformIO",
-                "task": "Pre-Debug (main)"
+                "task": "Pre-Debug (read_uart)"
             }
         },
         {
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
-            "projectEnvName": "main",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/read_uart/firmware.elf",
+            "projectEnvName": "read_uart",
             "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd"
@@ -36,8 +36,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
-            "projectEnvName": "main",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/read_uart/firmware.elf",
+            "projectEnvName": "read_uart",
             "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",

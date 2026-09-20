@@ -1,16 +1,19 @@
 {
   "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "envName",
+      "type": "pickString",
+      "description": "Какое окружение прошить?",
+      "options": ["main", "troll", "moving", "read_uart"],
+      "default": "main"
+    }
+  ],
   "tasks": [
     {
-      "label": "flash main",
+      "label": "Flash",
       "type": "shell",
-      "command": "python3 \"${workspaceFolder:RC}/scripts/flash.py\" main",
-      "problemMatcher": []
-    },
-    {
-      "label": "troll",
-      "type": "shell",
-      "command": "python3 \"${workspaceFolder:RC}/scripts/flash.py\" troll",
+      "command": "python3 \"${workspaceFolder:RC}/scripts/flash.py\" ${input:envName}",
       "problemMatcher": []
     }
   ]
