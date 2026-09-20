@@ -16,8 +16,9 @@ build/
 .pio/
 
 # IDE / системные файлы
-.vscode/*
-!.vscode/launch.json
+RC_pico/.vscode/*
+!RC_pico/.vscode/launch.json
+!RC_pico/.vscode/tasks.json
 .DS_Store
 Thumbs.db
 desktop.ini
