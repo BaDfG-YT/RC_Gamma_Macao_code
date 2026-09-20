@@ -7,5 +7,5 @@ void setup()
 
 void loop()
 {
-    digitalWrite(LED_BUILTIN, (millis() / 2000) % 2);
+    digitalWrite(LED_BUILTIN, (millis() / 299) % 2);
 };

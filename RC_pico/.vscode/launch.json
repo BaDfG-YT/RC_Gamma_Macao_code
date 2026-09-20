@@ -12,35 +12,35 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "C:/Bro/RC/RC_pico/.pio/build/moving/firmware.elf",
-            "projectEnvName": "moving",
-            "toolchainBinDir": "C:/Users/broni/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
+            "projectEnvName": "main",
+            "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
-            "svdPath": "C:/Users/broni/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",
+            "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",
             "preLaunchTask": {
                 "type": "PlatformIO",
-                "task": "Pre-Debug"
+                "task": "Pre-Debug (main)"
             }
         },
         {
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "C:/Bro/RC/RC_pico/.pio/build/moving/firmware.elf",
-            "projectEnvName": "moving",
-            "toolchainBinDir": "C:/Users/broni/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
+            "projectEnvName": "main",
+            "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
-            "svdPath": "C:/Users/broni/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd"
+            "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd"
         },
         {
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "C:/Bro/RC/RC_pico/.pio/build/moving/firmware.elf",
-            "projectEnvName": "moving",
-            "toolchainBinDir": "C:/Users/broni/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
+            "executable": "/home/bropi/Documents/RC/RC_pico/.pio/build/main/firmware.elf",
+            "projectEnvName": "main",
+            "toolchainBinDir": "/home/bropi/.platformio/packages/toolchain-rp2040-earlephilhower/bin",
             "internalConsoleOptions": "openOnSessionStart",
-            "svdPath": "C:/Users/broni/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",
+            "svdPath": "/home/bropi/.platformio/platforms/raspberrypi/misc/svd/rp2350.svd",
             "loadMode": "manual"
         }
     ]

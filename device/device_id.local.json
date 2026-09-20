@@ -1,5 +1,5 @@
 {
-  "id": "pc",
-  "type": "pc",
+  "id": "robotA",
+  "type": "robot",
   "target_host": null
 }
