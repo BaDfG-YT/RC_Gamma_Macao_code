@@ -1,24 +1,20 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "flash main",
-            "type": "shell",
-            "command": "${env:USERPROFILE}/.platformio/penv/Scripts/pio.exe run -e main && scp .pio/build/main/firmware.uf2 bropi@bropi.local:/tmp/ && ssh bropi@bropi.local \"~/flash_pico.sh\"",
-            "options": {
-                "cwd": "${workspaceFolder:RC_pico}"
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "troll",
-            "type": "shell",
-            "command": "scp RC_pico/.pio/build/troll/firmware.uf2 bropi@bropi.local:/tmp/ && ssh bropi@bropi.local \"~/flash_pico.sh\"",
-            "problemMatcher": [],
-            "dependsOn": [
-                "PlatformIO: Build (troll)"
-            ]
-        }
-    ]
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "envName",
+      "type": "pickString",
+      "description": "Какое окружение прошить?",
+      "options": ["main", "troll", "moving", "read_uart"],
+      "default": "main"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Flash",
+      "type": "shell",
+      "command": "python3 \"${workspaceFolder:RC}/scripts/flash.py\" ${input:envName}",
+      "problemMatcher": []
+    }
+  ]
 }
-//       "command": "scp .pio/build/main/firmware.uf2 bropi@192.168.50.2:/tmp/ && ssh bropi@192.168.50.2 \"~/flash_pico.sh\"",

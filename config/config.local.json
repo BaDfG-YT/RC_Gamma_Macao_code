@@ -5,24 +5,5 @@
     "defending_goal": "blue"
   },
 
-  "coefficients": {
-    "vision": {
-      "ball_detection_threshold": 0.6,
-      "camera_exposure": 100,
-      "min_ball_area": 50
-    },
-    "positioning": {
-      "home_x": 0,
-      "home_y": 0,
-      "defense_radius": 30,
-      "attack_radius": 150
-    },
-    "regulators": {
-      "pid_kp": 1.0,
-      "pid_ki": 0.0,
-      "pid_kd": 0.1
-    }
-  },
-
   "last_updated": null
 }

@@ -1,7 +1,9 @@
-from flask import Flask, Response, request
+from flask import Flask, Response, request, jsonify
 import cv2
 import numpy as np
 from picamera2 import Picamera2
+
+from config_io import load_config, save_detection
 
 app = Flask(__name__)
 
@@ -16,11 +18,20 @@ picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"size": (FRAME_W, FRAME_H)}))
 picam2.start()
 
-# значения по умолчанию
-H_MIN, S_MIN, V_MIN = 3, 155, 150
-H_MAX, S_MAX, V_MAX = 16, 210, 255
+# цели, которые можно настраивать (ключи vision.detection в конфиге)
+TARGETS = ["ball", "gateB", "gateY"]
+DEFAULT_TARGET = "ball"
 
-MIN_AREA_DEFAULT = 20
+
+def target_values(target):
+    """Стартовые значения ползунков из конфига (defaults + local)."""
+    det = load_config()["vision"]["detection"][target]
+    (h0, s0, v0), (h1, s1, v1) = det["hsv"]
+    return h0, s0, v0, h1, s1, v1, int(det["min_area"])
+
+
+# значения при старте - из конфига для цели по умолчанию
+H_MIN, S_MIN, V_MIN, H_MAX, S_MAX, V_MAX, MIN_AREA_DEFAULT = target_values(DEFAULT_TARGET)
 MIN_AREA_MAX = 5000  # верхняя граница ползунка
 
 # Качество JPEG для стрима (0-100). 80 -> 92: заметно меньше артефактов
@@ -34,7 +45,7 @@ ROI_CY_DEFAULT = FRAME_H // 2
 ROI_R_DEFAULT = min(FRAME_W, FRAME_H) // 4
 ROI_R_MAX = min(FRAME_W, FRAME_H) // 2  # радиус не больше половины меньшей стороны
 
-PAGE = """
+PAGE_TMPL = """
 <!doctype html>
 <html>
 <head>
@@ -52,12 +63,22 @@ PAGE = """
 </head>
 <body>
   <h3>HSV tuner</h3>
+  <div style="margin-bottom:8px">
+    Цель:
+    <select id="target" onchange="location.href='/?target='+this.value">__TARGET_OPTIONS__</select>
+    (значения загружены из конфига)
+  </div>
   <div class="row">
     <div class="panel">
       <img id="img" src="/video" width="640">
       <div style="margin-top:8px">
         <button onclick="setMode('overlay')">overlay</button>
         <button onclick="setMode('mask')">mask</button>
+      </div>
+      <div style="margin-top:8px">
+        <button onclick="saveCfg('defaults')">Загрузить данные в дефолтный конфиг</button>
+        <button onclick="saveCfg('local')">Загрузить данные в локальный конфиг</button>
+        <div id="savemsg" style="margin-top:6px"></div>
       </div>
       <div style="margin-top:8px">
         <div>LOWER: <code id="lowerv"></code></div>
@@ -119,6 +140,18 @@ function refresh(){
   document.getElementById("img").src = url;
 }
 function setMode(m){ mode=m; refresh(); }
+async function saveCfg(where){
+  const q = `target=${document.getElementById("target").value}&where=${where}`
+          + `&hmin=${val("hmin")}&smin=${val("smin")}&vmin=${val("vmin")}`
+          + `&hmax=${val("hmax")}&smax=${val("smax")}&vmax=${val("vmax")}`
+          + `&minarea=${val("minarea")}`;
+  const msg = document.getElementById("savemsg");
+  try {
+    const r = await fetch("/save?" + q, {method: "POST"});
+    const j = await r.json();
+    msg.textContent = j.ok ? `Сохранено (${where}): ${j.target} -> ${j.path}` : `Ошибка: ${j.error}`;
+  } catch (e) { msg.textContent = "Ошибка: " + e; }
+}
 
 ["hmin","hmax","smin","smax","vmin","vmax","minarea","roicx","roicy","roir"].forEach(id=>{
   document.getElementById(id).addEventListener("input", refresh);
@@ -129,13 +162,27 @@ setInterval(refresh, 200); // обновление 5 fps для тюнинга
 </script>
 </body>
 </html>
-""".replace("__H_MIN__", str(H_MIN)).replace("__H_MAX__", str(H_MAX)) \
-   .replace("__S_MIN__", str(S_MIN)).replace("__S_MAX__", str(S_MAX)) \
-   .replace("__V_MIN__", str(V_MIN)).replace("__V_MAX__", str(V_MAX)) \
-   .replace("__MIN_AREA_MAX__", str(MIN_AREA_MAX)).replace("__MIN_AREA_DEFAULT__", str(MIN_AREA_DEFAULT)) \
-   .replace("__FRAME_W__", str(FRAME_W)).replace("__FRAME_H__", str(FRAME_H)) \
-   .replace("__ROI_CX_DEFAULT__", str(ROI_CX_DEFAULT)).replace("__ROI_CY_DEFAULT__", str(ROI_CY_DEFAULT)) \
-   .replace("__ROI_R_DEFAULT__", str(ROI_R_DEFAULT)).replace("__ROI_R_MAX__", str(ROI_R_MAX))
+"""
+
+
+def render_page(target):
+    h0, s0, v0, h1, s1, v1, min_area = target_values(target)
+    options = "".join(
+        f'<option value="{t}"{" selected" if t == target else ""}>{t}</option>'
+        for t in TARGETS
+    )
+    return (PAGE_TMPL
+            .replace("__TARGET_OPTIONS__", options)
+            .replace("__H_MIN__", str(h0)).replace("__H_MAX__", str(h1))
+            .replace("__S_MIN__", str(s0)).replace("__S_MAX__", str(s1))
+            .replace("__V_MIN__", str(v0)).replace("__V_MAX__", str(v1))
+            .replace("__MIN_AREA_MAX__", str(MIN_AREA_MAX))
+            .replace("__MIN_AREA_DEFAULT__", str(min_area))
+            .replace("__FRAME_W__", str(FRAME_W)).replace("__FRAME_H__", str(FRAME_H))
+            .replace("__ROI_CX_DEFAULT__", str(ROI_CX_DEFAULT))
+            .replace("__ROI_CY_DEFAULT__", str(ROI_CY_DEFAULT))
+            .replace("__ROI_R_DEFAULT__", str(ROI_R_DEFAULT))
+            .replace("__ROI_R_MAX__", str(ROI_R_MAX)))
 
 
 def parse_int(name, default, lo, hi):
@@ -148,7 +195,26 @@ def parse_int(name, default, lo, hi):
 
 @app.route("/")
 def index():
-    return PAGE
+    target = request.args.get("target", DEFAULT_TARGET)
+    if target not in TARGETS:
+        target = DEFAULT_TARGET
+    return render_page(target)
+
+
+@app.route("/save", methods=["POST"])
+def save():
+    target = request.args.get("target", "")
+    where = request.args.get("where", "")
+    if target not in TARGETS or where not in ("defaults", "local"):
+        return jsonify(ok=False, error="bad target/where"), 400
+    lo = [parse_int("hmin", 0, 0, 179), parse_int("smin", 0, 0, 255), parse_int("vmin", 0, 0, 255)]
+    hi = [parse_int("hmax", 179, 0, 179), parse_int("smax", 255, 0, 255), parse_int("vmax", 255, 0, 255)]
+    min_area = parse_int("minarea", 0, 0, MIN_AREA_MAX)
+    try:
+        path = save_detection(target, lo, hi, min_area, where)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+    return jsonify(ok=True, target=target, where=where, path=str(path))
 
 
 @app.route("/video")
