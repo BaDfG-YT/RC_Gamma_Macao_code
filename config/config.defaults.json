@@ -24,8 +24,14 @@
   },
   "vision": {
     "frame": {
-      "high": { "w": 2592, "h": 1944 },
-      "game": { "w": 1280, "h": 720 }
+      "high": {
+        "w": 2592,
+        "h": 1944
+      },
+      "game": {
+        "w": 1280,
+        "h": 720
+      }
     },
     "detection": {
       "ball": {
@@ -135,7 +141,28 @@
     "baud": 115200,
     "send_period": 0.05,
     "tx_queue_max": 20,
-    "reset_delay": 2.0
+    "reset_delay": 2.0,
+    "gpio": {
+      "dribbler": 29,
+      "kick_charge": 28,
+      "kick_discharge": 28,
+      "encA": 27,
+      "encB": 26,
+      "encBTN": 25,
+      "spi_can": {
+        "miso": 12,
+        "mosi": 11,
+        "sck": 10,
+        "cs": 9,
+        "int": 8
+      },
+      "IIC": {
+        "sda": 20,
+        "scl": 21
+      },
+      "strip": 19,
+      "zummer": 18
+    }
   },
   "calibration": {},
   "flags": {
