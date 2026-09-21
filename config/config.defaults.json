@@ -69,7 +69,7 @@
       "rad_sml": 100,
       "rad_big": 200
     },
-    "center_offset": [-18, 30],
+    "center_offset": [14, 10],
     "ball_detection_threshold": 0.6,
     "camera_exposure": 100
   },

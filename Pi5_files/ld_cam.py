@@ -19,9 +19,6 @@ from PIL import Image, ImageDraw
 from picamera2 import Picamera2
 import cv2
 
-# Лидар LD19 (единственный поддерживаемый):
-# python3 ld_cam.py --port /dev/ttyUSB0
-
 # =====================================================================
 # Lidar protocols
 # =====================================================================
@@ -99,17 +96,33 @@ PICO_RESET_DELAY = float(CFG["pico"]["reset_delay"])
 ENABLE_LIDAR_VISUALIZATION = True
 
 ENABLE_CAMERA_SENDING = True
-ENABLE_CAMERA_VISUALIZATION = False
+ENABLE_CAMERA_VISUALIZATION = True
 CAMERA_WEB_PORT = int(CFG["web"]["camera_port"])
 
 CAM_FRAME_LOCK = threading.Lock()
 CAM_FRAME_JPEG = None
 
-FRAME_W = 640
-FRAME_H = 480
+FRAME_W = int(CFG["vision"]["frame"]["game"]["w"])
+FRAME_H = int(CFG["vision"]["frame"]["game"]["h"])
 
 CENTER_X = FRAME_W / 2 + CFG["vision"]["center_offset"][0]
 CENTER_Y = FRAME_H / 2 + CFG["vision"]["center_offset"][1]
+
+# --- Зона поиска: кольцо между rad_sml и rad_big (vision."accessible zone") ---
+# Тюнер сохраняет значения в координатах кадра vision.frame.high,
+# а здесь кадр vision.frame.game, поэтому пересчитываем масштаб.
+_ZONE = CFG["vision"]["accessible zone"]
+_HIGH = CFG["vision"]["frame"]["high"]
+_ZSX = FRAME_W / float(_HIGH["w"])
+_ZSY = FRAME_H / float(_HIGH["h"])
+ZONE_CX = int(round(_ZONE["xc"] * _ZSX))
+ZONE_CY = int(round(_ZONE["yc"] * _ZSY))
+ZONE_R_SML = int(round(_ZONE["rad_sml"] * _ZSX))
+ZONE_R_BIG = int(round(_ZONE["rad_big"] * _ZSX))
+
+ZONE_MASK = np.zeros((FRAME_H, FRAME_W), dtype=np.uint8)
+cv2.circle(ZONE_MASK, (ZONE_CX, ZONE_CY), ZONE_R_BIG, 255, -1)
+cv2.circle(ZONE_MASK, (ZONE_CX, ZONE_CY), ZONE_R_SML, 0, -1)
 
 
 def _hsv(name):
@@ -133,10 +146,12 @@ MAX_POINTS_TO_DRAW = int(_LIDAR["max_points_to_draw"])
 LIDAR_MIN_RANGE_MM = float(_LIDAR["min_range_mm"])
 LIDAR_MAX_RANGE_MM = float(_LIDAR["max_range_mm"])
 # === Pose sanity check ===
-OWN_GOAL_COLOR = CFG["team"]["defending_goal"]  # может быть переписан из --own-color
+# может быть переписан из --own-color
+OWN_GOAL_COLOR = CFG["team"]["defending_goal"]
 POSE_SANITY_PERIOD_S = float(_SANITY["period_s"])
 POSE_SANITY_FLIP_THRESHOLD_DEG = float(_SANITY["flip_threshold_deg"])
-POSE_SANITY_MIN_DIST_MM = float(_SANITY["min_dist_mm"])  # ближе этого к воротам не проверяем
+# ближе этого к воротам не проверяем
+POSE_SANITY_MIN_DIST_MM = float(_SANITY["min_dist_mm"])
 POSE_SANITY_COOLDOWN_S = float(_SANITY["cooldown_s"])  # после флипа подождать
 POSE_SANITY_CAM_MAX_AGE_S = float(_SANITY["camera_max_age_s"])
 
@@ -421,7 +436,8 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
         normal_err = abs(span_u - field_w) + abs(span_v - field_h)
         swapped_err = abs(span_u - field_h) + abs(span_v - field_w)
 
-        _, fit_err = wall_fit_score(u, v, umin, umax, vmin, vmax, field_w, field_h)
+        _, fit_err = wall_fit_score(
+            u, v, umin, umax, vmin, vmax, field_w, field_h)
 
         strength_penalty = 0.0
         if min(hu1, hu2) < MIN_WALL_PEAK:
@@ -436,7 +452,8 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 
         swap_penalty = 0.0
         if swapped_err < normal_err:
-            swap_penalty += (normal_err - swapped_err + 1.0) * SWAP_PENALTY_GAIN
+            swap_penalty += (normal_err - swapped_err +
+                             1.0) * SWAP_PENALTY_GAIN
 
         score = (
             normal_err * 5.0
@@ -492,7 +509,8 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
         normal_err = abs(span_u - field_w) + abs(span_v - field_h)
         swapped_err = abs(span_u - field_h) + abs(span_v - field_w)
 
-        _, fit_err = wall_fit_score(u, v, umin, umax, vmin, vmax, field_w, field_h)
+        _, fit_err = wall_fit_score(
+            u, v, umin, umax, vmin, vmax, field_w, field_h)
 
         strength_penalty = 0.0
         if min(hu1, hu2) < MIN_WALL_PEAK:
@@ -507,7 +525,8 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 
         swap_penalty = 0.0
         if swapped_err < normal_err:
-            swap_penalty += (normal_err - swapped_err + 1.0) * SWAP_PENALTY_GAIN
+            swap_penalty += (normal_err - swapped_err +
+                             1.0) * SWAP_PENALTY_GAIN
 
         score = (
             normal_err * 5.0
@@ -540,7 +559,8 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 
     variants = [
         {"x": base_x, "y": base_y, "yaw_base": fit_yaw},
-        {"x": FIELD_W - base_x, "y": FIELD_H - base_y, "yaw_base": fit_yaw + 180.0},
+        {"x": FIELD_W - base_x, "y": FIELD_H -
+            base_y, "yaw_base": fit_yaw + 180.0},
     ]
 
     if prev_pose is not None:
@@ -746,7 +766,8 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
                                     a = np.deg2rad(ang)
                                     xs = -dist * np.cos(a)
                                     ys = dist * np.sin(a)
-                                    pts = np.column_stack((xs, ys)).astype(np.float32)
+                                    pts = np.column_stack(
+                                        (xs, ys)).astype(np.float32)
                                     current_scan_pts.append(pts)
 
                                 s = protocol.packet_start_angle(mv)
@@ -759,12 +780,14 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
                                     if scan_buffer:
                                         parts.extend(scan_buffer)
                                     if current_scan_pts:
-                                        parts.append(np.vstack(current_scan_pts))
+                                        parts.append(
+                                            np.vstack(current_scan_pts))
 
                                     full_pts = np.vstack(parts)
 
                                     rr = np.linalg.norm(full_pts, axis=1)
-                                    m = (rr > LIDAR_MIN_RANGE_MM) & (rr < LIDAR_MAX_RANGE_MM)
+                                    m = (rr > LIDAR_MIN_RANGE_MM) & (
+                                        rr < LIDAR_MAX_RANGE_MM)
                                     full_pts = full_pts[m]
 
                                     if full_pts.shape[0] > MAX_POINTS_FOR_POSE:
@@ -780,7 +803,8 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
                                     pose_raw = estimate_pose(
                                         full_pts, prev_pose=LAST_POSE
                                     )
-                                    pose_smooth = smooth_pose(LAST_POSE, pose_raw)
+                                    pose_smooth = smooth_pose(
+                                        LAST_POSE, pose_raw)
                                     LAST_POSE = pose_smooth
                                     STATE.update_pose(pose_smooth)
 
@@ -805,7 +829,8 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
                                 # детектор начала оборота — универсальный
                                 if prev is not None and (prev - s) > 180.0:
                                     if current_scan_pts:
-                                        scan_buffer.append(np.vstack(current_scan_pts))
+                                        scan_buffer.append(
+                                            np.vstack(current_scan_pts))
                                         current_scan_pts = []
                                         if len(scan_buffer) > KEEP_LAST_SCANS:
                                             scan_buffer.pop(0)
@@ -968,7 +993,8 @@ def render_frame():
     top = min(y0, y1)
     bottom = max(y0, y1)
 
-    draw.rectangle([left, top, right, bottom], outline=(220, 220, 220), width=3)
+    draw.rectangle([left, top, right, bottom],
+                   outline=(220, 220, 220), width=3)
 
     if pose is not None and all(k in pose for k in ["umin", "umax", "vmin", "vmax"]):
         debug_corners_uv = [
@@ -982,7 +1008,8 @@ def render_frame():
             x_f, y_f = debug_uv_to_field(u, v, pose)
             px, py, _ = mm_to_px(x_f, y_f, img_w, img_h, FIELD_W, FIELD_H)
             debug_corners_px.append((px, py))
-        draw.line(debug_corners_px + [debug_corners_px[0]], fill=(255, 0, 0), width=2)
+        draw.line(debug_corners_px +
+                  [debug_corners_px[0]], fill=(255, 0, 0), width=2)
 
     for x in np.arange(100, FIELD_W, 100):
         px, _, _ = mm_to_px(x, 0, img_w, img_h, FIELD_W, FIELD_H)
@@ -993,7 +1020,8 @@ def render_frame():
         draw.line([(left, py), (right, py)], fill=(45, 45, 45), width=1)
 
     draw.text((left + 4, bottom + 4), "(0,0)", fill=(180, 180, 180))
-    draw.text((right - 110, bottom + 4), f"({FIELD_W:.0f},0)", fill=(180, 180, 180))
+    draw.text((right - 110, bottom + 4),
+              f"({FIELD_W:.0f},0)", fill=(180, 180, 180))
     draw.text((left + 4, top - 18), f"(0,{FIELD_H:.0f})", fill=(180, 180, 180))
 
     tx = NAV_STATE["target_x"]
@@ -1022,8 +1050,10 @@ def render_frame():
         u_dbg = rp_dbg[:, 0]
         v_dbg = rp_dbg[:, 1]
 
-        du_dbg = np.minimum(np.abs(u_dbg - pose["umin"]), np.abs(u_dbg - pose["umax"]))
-        dv_dbg = np.minimum(np.abs(v_dbg - pose["vmin"]), np.abs(v_dbg - pose["vmax"]))
+        du_dbg = np.minimum(
+            np.abs(u_dbg - pose["umin"]), np.abs(u_dbg - pose["umax"]))
+        dv_dbg = np.minimum(
+            np.abs(v_dbg - pose["vmin"]), np.abs(v_dbg - pose["vmax"]))
         wall_dist_dbg = np.minimum(du_dbg, dv_dbg)
 
         is_wall_dbg = wall_dist_dbg <= WALL_BAND_MM
@@ -1035,7 +1065,8 @@ def render_frame():
                 if is_wall_dbg[i]:
                     draw.circle((int(qx), int(qy)), fill=(0, 255, 0), radius=2)
                 else:
-                    draw.circle((int(qx), int(qy)), fill=(255, 100, 0), radius=1.5)
+                    draw.circle((int(qx), int(qy)), fill=(
+                        255, 100, 0), radius=1.5)
 
     if pose is not None:
         x = pose["x"]
@@ -1089,7 +1120,8 @@ def render_frame():
         draw.text((20, 152), txt7, fill=(255, 180, 120))
     else:
         draw.text((20, 20), "pose: no estimate", fill=(255, 120, 120))
-        draw.text((20, 42), f"points={pts_local.shape[0]}", fill=(180, 180, 180))
+        draw.text(
+            (20, 42), f"points={pts_local.shape[0]}", fill=(180, 180, 180))
 
     draw.text(
         (20, img_h - 26),
@@ -1155,15 +1187,19 @@ def compute_angle_360(cx, cy, center_x, center_y):
 
 def preprocess_mask(hsv, lower, upper):
     mask = cv2.inRange(hsv, lower, upper)
+    mask = cv2.bitwise_and(mask, ZONE_MASK)
     mask = cv2.medianBlur(mask, int(_MORPH["median_blur"]))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((_MORPH["open_kernel"],) * 2, np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((_MORPH["close_kernel"],) * 2, np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones(
+        (_MORPH["open_kernel"],) * 2, np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones(
+        (_MORPH["close_kernel"],) * 2, np.uint8))
     return mask
 
 
 def find_object_angle_area(hsv, lower, upper, min_area):
     mask = preprocess_mask(hsv, lower, upper)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if contours:
         c = max(contours, key=cv2.contourArea)
@@ -1204,7 +1240,8 @@ def camera_worker(stop_evt):
     try:
         picam2 = Picamera2()
         picam2.configure(
-            picam2.create_preview_configuration(main={"size": (FRAME_W, FRAME_H)})
+            picam2.create_preview_configuration(
+                main={"size": (FRAME_W, FRAME_H)})
         )
         picam2.start()
         time.sleep(2.0)
@@ -1237,18 +1274,21 @@ def camera_worker(stop_evt):
 
                     for c, area in valid:
                         x, y, w, h = cv2.boundingRect(c)
-                        cv2.rectangle(vis, (x, y), (x + w, y + h), dim_color, 1)
+                        cv2.rectangle(
+                            vis, (x, y), (x + w, y + h), dim_color, 1)
 
                     if not valid:
                         return
 
                     if mode == "largest_contour":
-                        best_c, best_area = max(valid, key=lambda item: item[1])
+                        best_c, best_area = max(
+                            valid, key=lambda item: item[1])
                         x, y, w, h = cv2.boundingRect(best_c)
                         cx = int(x + w / 2)
                         cy = int(y + h / 2)
                         ang = compute_angle_360(cx, cy, CENTER_X, CENTER_Y)
-                        cv2.rectangle(vis, (x, y), (x + w, y + h), bright_color, 3)
+                        cv2.rectangle(
+                            vis, (x, y), (x + w, y + h), bright_color, 3)
                         cv2.circle(vis, (cx, cy), 6, bright_color, -1)
                         cv2.putText(
                             vis,
@@ -1271,7 +1311,8 @@ def camera_worker(stop_evt):
                         cy = int(m["m01"] / m["m00"])
                         ang = compute_angle_360(cx, cy, CENTER_X, CENTER_Y)
                         x, y, w, h = cv2.boundingRect(mask)
-                        cv2.rectangle(vis, (x, y), (x + w, y + h), bright_color, 3)
+                        cv2.rectangle(
+                            vis, (x, y), (x + w, y + h), bright_color, 3)
                         cv2.circle(vis, (cx, cy), 7, bright_color, -1)
                         cv2.putText(
                             vis,
@@ -1308,7 +1349,14 @@ def camera_worker(stop_evt):
                     "color_cloud",
                 )
 
-                cv2.circle(vis, (int(CENTER_X), int(CENTER_Y)), 6, (255, 255, 255), -1)
+                cv2.circle(vis, (int(CENTER_X), int(CENTER_Y)),
+                           6, (255, 255, 255), -1)
+
+                cv2.circle(vis, (ZONE_CX, ZONE_CY),
+                           ZONE_R_SML, (255, 255, 0), 2)
+                cv2.circle(vis, (ZONE_CX, ZONE_CY),
+                           ZONE_R_BIG, (255, 0, 255), 2)
+
                 cv2.line(
                     vis,
                     (int(CENTER_X) - 12, int(CENTER_Y)),
@@ -1324,7 +1372,8 @@ def camera_worker(stop_evt):
                     1,
                 )
 
-                ok, jpg = cv2.imencode(".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                ok, jpg = cv2.imencode(
+                    ".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if ok:
                     global CAM_FRAME_JPEG
                     with CAM_FRAME_LOCK:
@@ -1342,9 +1391,11 @@ def camera_worker(stop_evt):
 
             with CAM_STATE_LOCK:
                 CAM_STATE["yellow_angle"] = yellow_angle
-                CAM_STATE["yellow_visible"] = abs(yellow_angle) <= TARGET_VISIBLE_MAX_ANGLE
+                CAM_STATE["yellow_visible"] = abs(
+                    yellow_angle) <= TARGET_VISIBLE_MAX_ANGLE
                 CAM_STATE["blue_angle"] = blue_angle
-                CAM_STATE["blue_visible"] = abs(blue_angle) <= TARGET_VISIBLE_MAX_ANGLE
+                CAM_STATE["blue_visible"] = abs(
+                    blue_angle) <= TARGET_VISIBLE_MAX_ANGLE
                 CAM_STATE["ts"] = time.time()
 
             pico_queue_line(f"BALL,{ball_angle:.2f},{ball_area}")
@@ -1408,7 +1459,8 @@ def camera_stream():
 def camera_web_worker(stop_evt):
     if not ENABLE_CAMERA_VISUALIZATION:
         return
-    camera_app.run(host=CFG["web"]["host"], port=CAMERA_WEB_PORT, threaded=True)
+    camera_app.run(host=CFG["web"]["host"],
+                   port=CAMERA_WEB_PORT, threaded=True)
 
 
 # =====================================================================
@@ -1530,20 +1582,24 @@ def main():
     )
 
     get_port = (
-        (lambda: autodetect(args.vid, args.pid)) if args.auto else (lambda: args.port)
+        (lambda: autodetect(args.vid, args.pid)
+         ) if args.auto else (lambda: args.port)
     )
 
     stop_evt = threading.Event()
 
     t_lidar = threading.Thread(
-        target=serial_worker, args=(get_port, baud, stop_evt, protocol), daemon=True
+        target=serial_worker, args=(
+            get_port, baud, stop_evt, protocol), daemon=True
     )
     t_lidar.start()
 
-    t_pico = threading.Thread(target=pico_sender_worker, args=(stop_evt,), daemon=True)
+    t_pico = threading.Thread(
+        target=pico_sender_worker, args=(stop_evt,), daemon=True)
     t_pico.start()
 
-    t_cam = threading.Thread(target=camera_worker, args=(stop_evt,), daemon=True)
+    t_cam = threading.Thread(target=camera_worker,
+                             args=(stop_evt,), daemon=True)
     t_cam.start()
 
     t_cam_web = threading.Thread(

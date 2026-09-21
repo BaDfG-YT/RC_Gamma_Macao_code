@@ -90,3 +90,18 @@ def save_detection(target, hsv_lo, hsv_hi, min_area, where):
     entry["min_area"] = int(min_area)
     _write(path, data)
     return path
+
+
+def save_zone(xc, yc, rad_sml, rad_big, where):
+    """Сохраняет ROI в vision."accessible zone": xc, yc, rad_sml, rad_big."""
+    if where not in ("defaults", "local"):
+        raise ValueError(where)
+    path = DEFAULTS_PATH if where == "defaults" else LOCAL_PATH
+    data = _read(path)
+    zone = data.setdefault("vision", {}).setdefault("accessible zone", {})
+    zone["xc"] = int(xc)
+    zone["yc"] = int(yc)
+    zone["rad_sml"] = int(rad_sml)
+    zone["rad_big"] = int(rad_big)
+    _write(path, data)
+    return path

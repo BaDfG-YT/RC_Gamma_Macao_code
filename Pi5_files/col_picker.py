@@ -1,22 +1,33 @@
+import threading
+
 from flask import Flask, Response, request, jsonify
 import cv2
 import numpy as np
 from picamera2 import Picamera2
 
-from config_io import load_config, save_detection
+from config_io import load_config, save_detection, save_zone
 
 app = Flask(__name__)
+
+CFG = load_config()
 
 # Максимальное разрешение сенсора IMX708 (Camera Module 3): 4608x2592.
 # Съёмка на полном разрешении - лучший вариант для подбора HSV, видно
 # мельчайшие детали границ цвета. Если Pi не тянет плавный стрим на таком
 # размере - опустись до половинного бина 2304x1296 (тоже нативный режим
 # сенсора, читается быстрее) или временно до .
-FRAME_W, FRAME_H = 2592, 1944
+FRAME_W, FRAME_H = int(CFG["vision"]["frame"]["high"]["w"]), int(CFG["vision"]["frame"]["high"]["h"])
+
+# верхняя граница обоих ползунков радиуса
+RAD_MAX = max(FRAME_W, FRAME_H)
 
 picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"size": (FRAME_W, FRAME_H)}))
 picam2.start()
+
+# Flask запущен с threaded=True, а камера одна - не даём запросам
+# одновременно дёргать capture_array()
+cam_lock = threading.Lock()
 
 # цели, которые можно настраивать (ключи vision.detection в конфиге)
 TARGETS = ["ball", "gateB", "gateY"]
@@ -25,25 +36,20 @@ DEFAULT_TARGET = "ball"
 
 def target_values(target):
     """Стартовые значения ползунков из конфига (defaults + local)."""
-    det = load_config()["vision"]["detection"][target]
+    det = CFG["vision"]["detection"][target]
     (h0, s0, v0), (h1, s1, v1) = det["hsv"]
-    return h0, s0, v0, h1, s1, v1, int(det["min_area"])
+    zones = CFG["vision"]["accessible zone"]
+    xc, yc, rad_sml, rad_big = zones["xc"], zones["yc"], zones["rad_sml"], zones["rad_big"]
+    return h0, s0, v0, h1, s1, v1, int(det["min_area"]), xc, yc, rad_sml, rad_big
 
 
 # значения при старте - из конфига для цели по умолчанию
-H_MIN, S_MIN, V_MIN, H_MAX, S_MAX, V_MAX, MIN_AREA_DEFAULT = target_values(DEFAULT_TARGET)
+H_MIN, S_MIN, V_MIN, H_MAX, S_MAX, V_MAX, MIN_AREA_DEFAULT, ROI_CX, ROI_CY, ROI_R_SML, ROI_R_BIG = target_values(DEFAULT_TARGET)
 MIN_AREA_MAX = 5000  # верхняя граница ползунка
 
 # Качество JPEG для стрима (0-100). 80 -> 92: заметно меньше артефактов
 # сжатия, тоже полезно при подборе HSV по краям объектов.
 JPEG_QUALITY = 92
-
-# --- Круговой ROI: цвет ищем только внутри этого круга ---
-# по умолчанию - центр кадра, радиус - четверть меньшей стороны
-ROI_CX_DEFAULT = FRAME_W // 2
-ROI_CY_DEFAULT = FRAME_H // 2
-ROI_R_DEFAULT = min(FRAME_W, FRAME_H) // 4
-ROI_R_MAX = min(FRAME_W, FRAME_H) // 2  # радиус не больше половины меньшей стороны
 
 PAGE_TMPL = """
 <!doctype html>
@@ -76,14 +82,20 @@ PAGE_TMPL = """
         <button onclick="setMode('mask')">mask</button>
       </div>
       <div style="margin-top:8px">
+        <div><b>HSV + min area</b> (для выбранной цели)</div>
         <button onclick="saveCfg('defaults')">Загрузить данные в дефолтный конфиг</button>
         <button onclick="saveCfg('local')">Загрузить данные в локальный конфиг</button>
-        <div id="savemsg" style="margin-top:6px"></div>
       </div>
+      <div style="margin-top:8px">
+        <div><b>ROI</b> (общий для всех целей)</div>
+        <button onclick="saveZone('defaults')">ROI в дефолтный конфиг</button>
+        <button onclick="saveZone('local')">ROI в локальный конфиг</button>
+      </div>
+      <div id="savemsg" style="margin-top:6px"></div>
       <div style="margin-top:8px">
         <div>LOWER: <code id="lowerv"></code></div>
         <div>UPPER: <code id="upperv"></code></div>
-        <div>MIN AREA: <code id="minareav"></code></div>
+        <div>MIN AREA: <code id="minareasum"></code></div>
         <div>ROI: <code id="roiv"></code></div>
       </div>
     </div>
@@ -111,49 +123,68 @@ PAGE_TMPL = """
       <b>ROI (круг поиска)</b>
 
       <label>Center X: <span id="roicxv"></span></label>
-      <input id="roicx" type="range" min="0" max="__FRAME_W__" value="__ROI_CX_DEFAULT__">
+      <input id="roicx" type="range" min="0" max="__FRAME_W__" value="__ROI_CX__">
       <label>Center Y: <span id="roicyv"></span></label>
-      <input id="roicy" type="range" min="0" max="__FRAME_H__" value="__ROI_CY_DEFAULT__">
-      <label>Radius: <span id="roirv"></span></label>
-      <input id="roir" type="range" min="1" max="__ROI_R_MAX__" value="__ROI_R_DEFAULT__">
+      <input id="roicy" type="range" min="0" max="__FRAME_H__" value="__ROI_CY__">
+      <label>Radius small (rad_sml): <span id="roirsv"></span></label>
+      <input id="roirs" type="range" min="1" max="__RAD_MAX__" value="__ROI_R_SML__">
+      <label>Radius big (rad_big): <span id="roirbv"></span></label>
+      <input id="roirb" type="range" min="1" max="__RAD_MAX__" value="__ROI_R_BIG__">
     </div>
   </div>
 
 <script>
+const IDS = ["hmin","hmax","smin","smax","vmin","vmax","minarea","roicx","roicy","roirs","roirb"];
 let mode = "overlay";
 function val(id){ return document.getElementById(id).value; }
 function updLabels(){
-  ["hmin","hmax","smin","smax","vmin","vmax","minarea","roicx","roicy","roir"].forEach(id=>{
+  IDS.forEach(id=>{
     const el = document.getElementById(id+"v");
     if (el) el.textContent = val(id);
   });
   document.getElementById("lowerv").textContent = `[${val("hmin")}, ${val("smin")}, ${val("vmin")}]`;
   document.getElementById("upperv").textContent = `[${val("hmax")}, ${val("smax")}, ${val("vmax")}]`;
-  document.getElementById("roiv").textContent = `cx=${val("roicx")} cy=${val("roicy")} r=${val("roir")}`;
+  document.getElementById("minareasum").textContent = val("minarea");
+  document.getElementById("roiv").textContent =
+    `cx=${val("roicx")} cy=${val("roicy")} r_sml=${val("roirs")} r_big=${val("roirb")}`;
 }
 function refresh(){
   updLabels();
   const url = `/video?hmin=${val("hmin")}&hmax=${val("hmax")}&smin=${val("smin")}&smax=${val("smax")}`
             + `&vmin=${val("vmin")}&vmax=${val("vmax")}&minarea=${val("minarea")}`
-            + `&roicx=${val("roicx")}&roicy=${val("roicy")}&roir=${val("roir")}`
+            + `&roicx=${val("roicx")}&roicy=${val("roicy")}&roirs=${val("roirs")}&roirb=${val("roirb")}`
             + `&mode=${mode}&_=${Date.now()}`;
   document.getElementById("img").src = url;
 }
 function setMode(m){ mode=m; refresh(); }
-async function saveCfg(where){
+
+async function post(url, okText){
+  const msg = document.getElementById("savemsg");
+  try {
+    const r = await fetch(url, {method: "POST"});
+    const j = await r.json();
+    msg.textContent = j.ok ? okText(j) : `Ошибка: ${j.error}`;
+  } catch (e) { msg.textContent = "Ошибка: " + e; }
+}
+
+// HSV + min area для выбранной цели (ROI здесь НЕ отправляется)
+function saveCfg(where){
   const q = `target=${document.getElementById("target").value}&where=${where}`
           + `&hmin=${val("hmin")}&smin=${val("smin")}&vmin=${val("vmin")}`
           + `&hmax=${val("hmax")}&smax=${val("smax")}&vmax=${val("vmax")}`
           + `&minarea=${val("minarea")}`;
-  const msg = document.getElementById("savemsg");
-  try {
-    const r = await fetch("/save?" + q, {method: "POST"});
-    const j = await r.json();
-    msg.textContent = j.ok ? `Сохранено (${where}): ${j.target} -> ${j.path}` : `Ошибка: ${j.error}`;
-  } catch (e) { msg.textContent = "Ошибка: " + e; }
+  return post("/save?" + q, j => `Сохранено (${where}): ${j.target} -> ${j.path}`);
 }
 
-["hmin","hmax","smin","smax","vmin","vmax","minarea","roicx","roicy","roir"].forEach(id=>{
+// ROI - отдельным запросом, т.к. он общий для всех целей
+function saveZone(where){
+  const q = `where=${where}&roicx=${val("roicx")}&roicy=${val("roicy")}`
+          + `&roirs=${val("roirs")}&roirb=${val("roirb")}`;
+  return post("/save_zone?" + q, j =>
+    `ROI сохранён (${where}): cx=${j.xc} cy=${j.yc} r_sml=${j.rad_sml} r_big=${j.rad_big} -> ${j.path}`);
+}
+
+IDS.forEach(id=>{
   document.getElementById(id).addEventListener("input", refresh);
 });
 updLabels();
@@ -166,7 +197,7 @@ setInterval(refresh, 200); // обновление 5 fps для тюнинга
 
 
 def render_page(target):
-    h0, s0, v0, h1, s1, v1, min_area = target_values(target)
+    h0, s0, v0, h1, s1, v1, min_area, roi_cx, roi_cy, roi_rsml, roi_rbig = target_values(target)
     options = "".join(
         f'<option value="{t}"{" selected" if t == target else ""}>{t}</option>'
         for t in TARGETS
@@ -179,10 +210,11 @@ def render_page(target):
             .replace("__MIN_AREA_MAX__", str(MIN_AREA_MAX))
             .replace("__MIN_AREA_DEFAULT__", str(min_area))
             .replace("__FRAME_W__", str(FRAME_W)).replace("__FRAME_H__", str(FRAME_H))
-            .replace("__ROI_CX_DEFAULT__", str(ROI_CX_DEFAULT))
-            .replace("__ROI_CY_DEFAULT__", str(ROI_CY_DEFAULT))
-            .replace("__ROI_R_DEFAULT__", str(ROI_R_DEFAULT))
-            .replace("__ROI_R_MAX__", str(ROI_R_MAX)))
+            .replace("__RAD_MAX__", str(RAD_MAX))
+            .replace("__ROI_CX__", str(roi_cx))
+            .replace("__ROI_CY__", str(roi_cy))
+            .replace("__ROI_R_SML__", str(roi_rsml))
+            .replace("__ROI_R_BIG__", str(roi_rbig)))
 
 
 def parse_int(name, default, lo, hi):
@@ -191,6 +223,12 @@ def parse_int(name, default, lo, hi):
         return max(lo, min(hi, v))
     except Exception:
         return default
+
+
+def reload_cfg():
+    """Перечитать конфиг после сохранения, чтобы страница показывала свежие значения."""
+    global CFG
+    CFG = load_config()
 
 
 @app.route("/")
@@ -203,6 +241,7 @@ def index():
 
 @app.route("/save", methods=["POST"])
 def save():
+    """Сохраняет HSV и min_area выбранной цели."""
     target = request.args.get("target", "")
     where = request.args.get("where", "")
     if target not in TARGETS or where not in ("defaults", "local"):
@@ -212,9 +251,31 @@ def save():
     min_area = parse_int("minarea", 0, 0, MIN_AREA_MAX)
     try:
         path = save_detection(target, lo, hi, min_area, where)
+        reload_cfg()
     except Exception as e:
         return jsonify(ok=False, error=str(e)), 500
     return jsonify(ok=True, target=target, where=where, path=str(path))
+
+
+@app.route("/save_zone", methods=["POST"])
+def save_zone_route():
+    """Сохраняет ROI (xc, yc, rad_sml, rad_big) в vision.accessible zone."""
+    where = request.args.get("where", "")
+    if where not in ("defaults", "local"):
+        return jsonify(ok=False, error="bad where"), 400
+    xc = parse_int("roicx", FRAME_W // 2, 0, FRAME_W)
+    yc = parse_int("roicy", FRAME_H // 2, 0, FRAME_H)
+    rad_sml = parse_int("roirs", ROI_R_SML, 1, RAD_MAX)
+    rad_big = parse_int("roirb", ROI_R_BIG, 1, RAD_MAX)
+    if rad_sml > rad_big:
+        return jsonify(ok=False, error=f"rad_sml ({rad_sml}) больше rad_big ({rad_big})"), 400
+    try:
+        path = save_zone(xc, yc, rad_sml, rad_big, where)
+        reload_cfg()
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+    return jsonify(ok=True, where=where, path=str(path),
+                   xc=xc, yc=yc, rad_sml=rad_sml, rad_big=rad_big)
 
 
 @app.route("/video")
@@ -227,28 +288,31 @@ def video():
     vmax = parse_int("vmax", V_MAX, 0, 255)
     min_area = parse_int("minarea", MIN_AREA_DEFAULT, 0, MIN_AREA_MAX)
 
-    roi_cx = parse_int("roicx", ROI_CX_DEFAULT, 0, FRAME_W)
-    roi_cy = parse_int("roicy", ROI_CY_DEFAULT, 0, FRAME_H)
-    roi_r = parse_int("roir", ROI_R_DEFAULT, 1, ROI_R_MAX)
+    roi_cx = parse_int("roicx", ROI_CX, 0, FRAME_W)
+    roi_cy = parse_int("roicy", ROI_CY, 0, FRAME_H)
+    roi_rs = parse_int("roirs", ROI_R_SML, 1, RAD_MAX)
+    roi_rb = parse_int("roirb", ROI_R_BIG, 1, RAD_MAX)
 
     mode = request.args.get("mode", "overlay")
 
-    frame = picam2.capture_array()
+    with cam_lock:
+        frame = picam2.capture_array()
     bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
     color_mask = cv2.inRange(hsv, np.array([hmin, smin, vmin]), np.array([hmax, smax, vmax]))
 
-    # круговая маска ROI - белый круг на чёрном фоне того же размера,
-    # что и кадр; цвет ищем только там, где обе маски пересекаются
+    # кольцевая маска ROI: белое кольцо между rad_sml (внутренний радиус)
+    # и rad_big (внешний) на чёрном фоне того же размера, что и кадр;
+    # цвет ищем только там, где обе маски пересекаются
     roi_mask = np.zeros(color_mask.shape, dtype=np.uint8)
-    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_r, 255, -1)
+    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rb, 255, -1)  # большой круг заливаем
+    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rs, 0, -1)    # малый вырезаем
 
     mask = cv2.bitwise_and(color_mask, roi_mask)
 
     if mode == "mask":
         out = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-        cv2.circle(out, (roi_cx, roi_cy), roi_r, (0, 255, 255), 3)
     else:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
@@ -263,10 +327,11 @@ def video():
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
                 cv2.putText(bgr, f"center=({cx},{cy}) r={int(r)} area={int(area)} minarea={min_area}",
                             (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        # рамка ROI на overlay - всегда видна, чтобы понимать рабочую зону
-        cv2.circle(bgr, (roi_cx, roi_cy), roi_r, (255, 255, 0), 3)
         out = bgr
+
+    # рамки ROI - всегда видны: малый круг (голубой) и большой (пурпурный)
+    cv2.circle(out, (roi_cx, roi_cy), roi_rs, (255, 255, 0), 3)
+    cv2.circle(out, (roi_cx, roi_cy), roi_rb, (255, 0, 255), 3)
 
     ok, jpg = cv2.imencode(".jpg", out, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
     if not ok:
