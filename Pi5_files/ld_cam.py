@@ -1063,7 +1063,7 @@ def render_frame():
 
             if 0 <= qx < img_w and 0 <= qy < img_h:
                 if is_wall_dbg[i]:
-                    draw.circle((int(qx), int(qy)), fill=(0, 255, 0), radius=2)
+                    draw.circle((int(qx), int(qy)), fill=(0, 255, 0), radius=1)
                 else:
                     draw.circle((int(qx), int(qy)), fill=(
                         255, 100, 0), radius=1.5)

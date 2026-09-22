@@ -83,7 +83,7 @@
     "offset_x": 0.0,
     "offset_y": 0.0,
     "min_range_mm": 92.0,
-    "max_range_mm": 3000.0,
+    "max_range_mm": 3050.0,
     "update_period": 0.05,
     "keep_last_scans": 1,
     "clear_on_wrap": false,
