@@ -4,24 +4,36 @@
 LD19 web viewer over SSH
 
 LD19 — 47-byte packets, header 0x54 0x2C
+
+Все параметры лидара и веб-сервера берутся из
+RC/config/config.defaults.json (+ config.local.json) —
+через общий scripts/config_utils.py.
+Аргументы командной строки позволяют переопределить их разово,
+не трогая конфиг.
 """
 
 import argparse
 import io
-import math
 import threading
 import time
 
 import numpy as np
-import lidar_cfg
 import serial
 from serial.tools import list_ports
 from flask import Flask, Response
 from PIL import Image, ImageDraw
 
-# python ld_ssh.py --port /dev/ttyUSB0
-# С автодетектом CP2102:
-# python ld_ssh.py --auto
+# --- Загрузка общего конфига проекта ---
+_THIS_DIR = pathlib.Path(__file__).parent
+sys.path.insert(0, str(_THIS_DIR.parent / "scripts"))
+from config_utils import load_config  # noqa: E402
+
+CONFIG = load_config("config", _THIS_DIR.parent / "config")
+LIDAR_CFG = CONFIG["lidar"]
+WEB_CFG = CONFIG["web"]
+
+# python ld_ssh.py
+# python ld_ssh.py --port /dev/ttyUSB1   (переопределить порт разово)
 
 
 # =====================================================================
@@ -35,8 +47,9 @@ class LD19Protocol:
     HDR = b"\x54\x2C"
     NPTS = 12
 
-    # CRC-8 table и init — из config/config.defaults.json (lidar_cfg.py)
-    CRC_TABLE = lidar_cfg.CRC_TABLE
+    # CRC-8 таблица и init — теперь напрямую из config.defaults.json
+    CRC_TABLE = LIDAR_CFG["crc_table"]
+    CRC_INIT = LIDAR_CFG["crc_init"]
 
     DEFAULT_BAUD = 230400
 
@@ -44,7 +57,7 @@ class LD19Protocol:
     def verify(cls, mv, mode):
         if mode == "none":
             return True
-        crc = lidar_cfg.CRC_INIT
+        crc = cls.CRC_INIT
         for b in mv[2:46]:
             crc = int(cls.CRC_TABLE[(crc ^ b) & 0xFF])
         crc_ok = (crc & 0xFF) == mv[46]
@@ -187,71 +200,46 @@ def serial_worker(get_port, baud, stop_evt, check_mode, hyst, state, protocol,
             bytes_sec = 0
             hdr_sec = 0
 
-            st = 0
-            pkt = bytearray(PKT)
-            idx = 0
-
             while not stop_evt.is_set():
                 chunk = ser.read(block_size)
                 if chunk:
                     buf += chunk
                     bytes_sec += len(chunk)
 
-                i = 0
-                while i < len(buf):
-                    b = buf[i]
-                    i += 1
+                while True:
+                    idx = buf.find(HDR)
+                    if idx < 0:
+                        if len(buf) > 4096:
+                            del buf[:-1]
+                        break
+                    if idx > 0:
+                        del buf[:idx]
+                    if len(buf) < PKT:
+                        break
 
-                    if st == 0:
-                        if b == HDR[0]:
-                            pkt[0] = b
-                            idx = 1
-                            st = 1
-                    elif st == 1:
-                        if b == HDR[1]:
-                            pkt[1] = b
-                            idx = 2
-                            st = 2
-                            hdr_sec += 1
-                        else:
-                            # header[0] совпал, но header[1] нет —
-                            # вернуться в st=0; если этот же байт — header[0],
-                            # перепроверить
-                            if b == HDR[0]:
-                                pkt[0] = b
-                                idx = 1
-                                st = 1
-                            else:
-                                st = 0
-                    else:
-                        pkt[idx] = b
-                        idx += 1
-                        if idx == PKT:
-                            mv = memoryview(pkt)
-                            if protocol.verify(mv, check_mode):
-                                ang, dist = protocol.parse(mv)
-                                if ang is not None:
-                                    state.update_polar(ang, dist)
+                    pkt_bytes = bytes(buf[:PKT])
+                    del buf[:PKT]
 
-                                start_a = protocol.packet_start_angle(mv)
-                                now = time.time()
-                                if (prev is not None
-                                        and (prev - start_a) > 180.0
-                                        and (now - last_new_ts) > 0.08):
-                                    state.swap_scan()
-                                    last_new_ts = now
-                                # запасной wrap-детектор (для LD19 со скачком 360→0 в окне hyst)
-                                elif (prev is not None
-                                        and prev > (360.0 - hyst)
-                                        and start_a < hyst
-                                        and (now - last_new_ts) > 0.10):
-                                    state.swap_scan()
-                                    last_new_ts = now
-                                prev = start_a
-                            st = 0
+                    if protocol.verify(pkt_bytes, check_mode):
+                        hdr_sec += 1
+                        ang, dist = protocol.parse(pkt_bytes)
+                        if ang is not None:
+                            state.update_polar(ang, dist)
 
-                if i > 0:
-                    del buf[:i]
+                        start_a = protocol.packet_start_angle(pkt_bytes)
+                        now = time.time()
+                        if (prev is not None
+                                and (prev - start_a) > 180.0
+                                and (now - last_new_ts) > 0.08):
+                            state.swap_scan()
+                            last_new_ts = now
+                        elif (prev is not None
+                                and prev > (360.0 - hyst)
+                                and start_a < hyst
+                                and (now - last_new_ts) > 0.10):
+                            state.swap_scan()
+                            last_new_ts = now
+                        prev = start_a
 
                 now = time.time()
                 if now - t0 >= 1.0:
@@ -280,29 +268,23 @@ def serial_worker(get_port, baud, stop_evt, check_mode, hyst, state, protocol,
 
 def render_frame(state: SharedState, baud: int) -> bytes:
     dist_last, ang_bins_rad, port, bytes_sec, hdr_sec, proto_name = state.snapshot()
-    img = Image.new("RGB", (state.w, state.h), (0, 0, 0))
-    draw = ImageDraw.Draw(img)
 
-    cx = state.w // 2
-    cy = state.h // 2
-
-    draw.line((0, cy, state.w, cy), fill=(60, 60, 60))
-    draw.line((cx, 0, cx, state.h), fill=(60, 60, 60))
+    arr = np.zeros((state.h, state.w, 3), dtype=np.uint8)
+    cx, cy = state.w // 2, state.h // 2
+    arr[cy, :] = (60, 60, 60)
+    arr[:, cx] = (60, 60, 60)
 
     m = dist_last >= 0.0
     if np.any(m):
         d = dist_last[m]
         a = ang_bins_rad[m]
-        xs = d * np.cos(a)
-        ys = d * np.sin(a)
-
-        sx = (cx + xs * state.scale).astype(np.int32)
-        sy = (cy + ys * state.scale).astype(np.int32)
-
+        sx = (cx + d * np.cos(a) * state.scale).astype(np.int32)
+        sy = (cy + d * np.sin(a) * state.scale).astype(np.int32)
         valid = (sx >= 0) & (sx < state.w) & (sy >= 0) & (sy < state.h)
-        for x, y in zip(sx[valid], sy[valid]):
-            draw.point((int(x), int(y)), fill=(230, 230, 230))
+        arr[sy[valid], sx[valid]] = (230, 230, 230)
 
+    img = Image.fromarray(arr, "RGB")
+    draw = ImageDraw.Draw(img)
     txt = (f"proto:{proto_name} port:{port} baud:{baud} "
            f"bytes/s:{bytes_sec} hdr/s:{hdr_sec} bins:{state.bins}")
     draw.text((10, 10), txt, fill=(255, 255, 255))
@@ -364,16 +346,16 @@ def main():
     ap.add_argument("--auto", action="store_true")
     ap.add_argument("--vid", type=str)
     ap.add_argument("--pid", type=str)
-    ap.add_argument("--port", default="/dev/ttyUSB0")
-    ap.add_argument("--baud", type=int, default=None,
-                    help="по умолчанию: 230400")
+    ap.add_argument("--port", default=LIDAR_CFG["port"])
+    ap.add_argument("--baud", type=int, default=LIDAR_CFG.get("baud"),
+                    help="по умолчанию из конфига, иначе 230400")
     ap.add_argument("--w", type=int, default=800)
     ap.add_argument("--h", type=int, default=600)
     ap.add_argument("--scale", type=float, default=0.05)
     ap.add_argument("--check", choices=["auto", "add", "crc", "none"], default="none")
     ap.add_argument("--ang-res", type=float, default=0.1)
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--web-port", type=int, default=8000)
+    ap.add_argument("--host", default=WEB_CFG.get("host", "0.0.0.0"))
+    ap.add_argument("--web-port", type=int, default=WEB_CFG.get("lidar_port", 8000))
     args = ap.parse_args()
 
     protocol = LD19Protocol
