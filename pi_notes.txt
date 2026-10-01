@@ -1,0 +1,7 @@
+sudo nmcli device wifi connect "Имя_сети" password "пароль_сети" - подкл
+nmcli connection show - показать сети
+sudo nmcli connection delete "Имя_сети" - удалить из памяти
+sudo nmcli device disconnect wlan0 - отключиться
+проверить, куда подкл:
+nmcli device status
+hostname -I
