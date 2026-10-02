@@ -32,7 +32,7 @@ def run_server(my_id, peer_id, channel=1):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     try:
-        sock.bind(("", channel))
+        sock.bind((socket.BDADDR_ANY, channel))
         sock.listen(1)
         print(f"  Слушаю на канале {channel}...")
 
