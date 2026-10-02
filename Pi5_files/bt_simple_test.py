@@ -24,12 +24,22 @@ def load_device_config():
         sys.exit(1)
 
 
+def set_no_security(sock):
+    """Отключить требование шифрования/аутентификации на RFCOMM сокете"""
+    try:
+        # BT_SECURITY = 4, BT_SECURITY_SDP (нет шифрования) = 0
+        sock.setsockopt(socket.SOL_BLUETOOTH, socket.BT_SECURITY, struct.pack("B", 0))
+    except (AttributeError, OSError) as e:
+        print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
+
+
 def run_server(my_id, peer_id, channel=1):
     """Сервер - слушает входящие соединения"""
     print(f"[{my_id}] Запуск BT сервера на канале {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    set_no_security(sock)
 
     try:
         sock.bind((socket.BDADDR_ANY, channel))
@@ -62,6 +72,7 @@ def run_client(my_id, peer_id, bd_addr, channel=1):
     print(f"[{my_id}] Подключение к {bd_addr} на канале {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+    set_no_security(sock)
 
     try:
         sock.bind((socket.BDADDR_ANY, 0))
