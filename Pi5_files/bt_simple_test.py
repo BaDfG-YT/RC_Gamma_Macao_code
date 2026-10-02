@@ -24,12 +24,16 @@ def load_device_config():
         sys.exit(1)
 
 
+SOL_BLUETOOTH = 274
+BT_SECURITY = 4
+BT_SECURITY_SDP = 0
+
+
 def set_no_security(sock):
     """Отключить требование шифрования/аутентификации на RFCOMM сокете"""
     try:
-        # BT_SECURITY = 4, BT_SECURITY_SDP (нет шифрования) = 0
-        sock.setsockopt(socket.SOL_BLUETOOTH, socket.BT_SECURITY, struct.pack("B", 0))
-    except (AttributeError, OSError) as e:
+        sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("B", BT_SECURITY_SDP))
+    except OSError as e:
         print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
 
 
