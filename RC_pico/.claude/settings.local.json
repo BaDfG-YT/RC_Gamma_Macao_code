@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(pio run 2>&1)"
-    ]
-  }
-}
