@@ -1,13 +1,13 @@
 {
   "id": "robotA",
-  "hostname": "bropi",
+  "hostname": "example-host",
   "type": "robot",
   "target_host": null,
   "peers": {
     "robotB": {
-      "bd_addr": "2C:CF:67:5C:F0:F6",
-      "hostname": "bropi2",
-      "added_at": "2026-10-02T..."
+      "bd_addr": "AA:BB:CC:DD:EE:FF",
+      "hostname": "example-host-2",
+      "added_at": "2026-01-01T00:00:00"
     }
   }
 }
