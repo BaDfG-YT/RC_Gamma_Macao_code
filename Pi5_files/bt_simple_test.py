@@ -64,6 +64,7 @@ def run_client(my_id, peer_id, bd_addr, channel=1):
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
 
     try:
+        sock.bind((socket.BDADDR_ANY, 0))
         sock.connect((bd_addr, channel))
         print(f"  ✓ Подключено\n")
 
