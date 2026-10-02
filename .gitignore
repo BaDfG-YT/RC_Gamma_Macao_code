@@ -29,11 +29,14 @@ RC_pico/.vscode/*
 Thumbs.db
 desktop.ini
 .claude/
+.claude/**/*.local.json
+RC_pico/.claude/**/*.local.json
 .vscode/c_cpp_properties.json
 
-# идентефикационный и конф файл
+# Локальные конфиги (не должны быть в git)
 config/config.local.json
 device/device_id.local.json
+*.local.json
 
 # архивы ini
 toolchain-cache/
