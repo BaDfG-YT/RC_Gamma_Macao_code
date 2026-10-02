@@ -32,7 +32,8 @@ BT_SECURITY_SDP = 0
 def set_no_security(sock):
     """Отключить требование шифрования/аутентификации на RFCOMM сокете"""
     try:
-        sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("B", BT_SECURITY_SDP))
+        # struct bt_security { uint8_t level; uint8_t key_size; }
+        sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("BB", BT_SECURITY_SDP, 0))
     except OSError as e:
         print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
 
