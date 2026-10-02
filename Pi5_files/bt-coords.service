@@ -1,0 +1,19 @@
+[Unit]
+Description=BT coordinates exchange between robots
+After=bluetooth.target bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+User=root
+# ЗАМЕНИТЕ /home/ВАШ_ПОЛЬЗОВАТЕЛЬ на реальный путь (например /home/bropi или /home/bropi2)
+WorkingDirectory=/home/ВАШ_ПОЛЬЗОВАТЕЛЬ/Documents/RC/Pi5_files
+ExecStartPre=/bin/sh -c 'hciconfig hci0 up; hciconfig hci0 piscan; exit 0'
+ExecStart=/usr/bin/python3 /home/ВАШ_ПОЛЬЗОВАТЕЛЬ/Documents/RC/Pi5_files/bt_coords.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

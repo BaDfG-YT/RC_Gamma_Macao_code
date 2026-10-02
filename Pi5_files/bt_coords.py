@@ -28,6 +28,7 @@
 import json
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -62,6 +63,23 @@ def set_no_security(sock):
         sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("BB", BT_SECURITY_SDP, 0))
     except OSError as e:
         print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
+
+
+def ensure_sdp_service(channel):
+    """
+    Регистрирует Serial Port (SPP) сервис на заданном RFCOMM-канале через sdptool.
+
+    SDP-запись живёт в runtime-памяти bluetoothd и пропадает при каждом
+    перезапуске/перезагрузке - поэтому регистрируем её при каждом старте
+    слушающей стороны, а не только один раз вручную.
+    """
+    try:
+        subprocess.run(
+            ["sdptool", "add", f"--channel={channel}", "SP"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"  (не удалось зарегистрировать SDP-сервис: {e})", file=sys.stderr)
 
 
 def get_my_coords():
@@ -161,41 +179,51 @@ def run_duplex(sock, my_id, peer_id, rate_hz):
     t_recv.join(timeout=1)
 
 
-def run_listen(my_id, peer_id, channel=1, rate_hz=10):
-    """Слушает входящее соединение, потом переходит в дуплексный режим"""
+def run_listen(my_id, peer_id, channel=1, rate_hz=10, retry_delay=2.0):
+    """
+    Слушает входящие соединения в бесконечном цикле: после разрыва
+    (перезагрузка/выключение пира, потеря связи) снова ждёт нового
+    подключения, не завершая процесс. Останавливается только по Ctrl+C.
+    """
     print(f"[{my_id}] Жду подключения от {peer_id} на канале {channel}...")
+    ensure_sdp_service(channel)
 
-    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    set_no_security(sock)
+    while True:
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        set_no_security(sock)
 
-    try:
-        sock.bind((socket.BDADDR_ANY, channel))
-        sock.listen(1)
+        try:
+            sock.bind((socket.BDADDR_ANY, channel))
+            sock.listen(1)
 
-        conn, addr = sock.accept()
-        print(f"  ✓ Подключено: {addr}\n")
-        print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
+            conn, addr = sock.accept()
+            print(f"  ✓ Подключено: {addr}\n")
+            print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
 
-        run_duplex(conn, my_id, peer_id, rate_hz)
-        conn.close()
-    except Exception as e:
-        print(f"  ✗ Ошибка: {e}", file=sys.stderr)
-    finally:
-        sock.close()
+            run_duplex(conn, my_id, peer_id, rate_hz)
+            conn.close()
+            print(f"\n[{my_id}] Соединение потеряно, жду повторного подключения...")
+        except KeyboardInterrupt:
+            print(f"\n[{my_id}] Остановлено пользователем")
+            sock.close()
+            break
+        except OSError as e:
+            print(f"  ✗ Ошибка: {e}, повтор через {retry_delay:.0f}с...", file=sys.stderr)
+            time.sleep(retry_delay)
+        finally:
+            sock.close()
 
 
 def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10, retry_delay=2.0):
     """
-    Подключается к слушающей стороне, потом переходит в дуплексный режим.
-    Повторяет попытки подключения, пока слушающая сторона не поднимется
-    (нужно при автозапуске без координации по времени между сторонами).
+    Подключается к слушающей стороне в бесконечном цикле: повторяет
+    попытки, пока слушающая сторона не поднимется, и переподключается
+    заново после разрыва связи. Останавливается только по Ctrl+C.
     """
     print(f"[{my_id}] Подключение к {peer_id} ({bd_addr}) на канале {channel}...")
 
-    attempt = 0
     while True:
-        attempt += 1
         sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         set_no_security(sock)
 
@@ -206,15 +234,17 @@ def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10, retry_delay=2.0)
             print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
 
             run_duplex(sock, my_id, peer_id, rate_hz)
-            break
+            print(f"\n[{my_id}] Соединение потеряно, пробую переподключиться...")
         except KeyboardInterrupt:
             print(f"\n[{my_id}] Остановлено пользователем")
+            sock.close()
             break
         except OSError as e:
-            print(f"  ✗ Попытка {attempt} неудачна: {e}, повтор через {retry_delay:.0f}с...", file=sys.stderr)
-            time.sleep(retry_delay)
+            print(f"  ✗ Не удалось подключиться: {e}, повтор через {retry_delay:.0f}с...", file=sys.stderr)
         finally:
             sock.close()
+
+        time.sleep(retry_delay)
 
 
 def autodetect_role(my_id, config):
