@@ -1,25 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Передача координат (x, y, yaw) между двумя распаями по Bluetooth RFCOMM.
+Двусторонний обмен координатами (x, y, yaw) между двумя распаями по Bluetooth RFCOMM.
 
-Основано на рабочей конфигурации bt_simple_test.py.
+Каждая сторона ОДНОВРЕМЕННО:
+  - отправляет свои координаты (get_my_coords())
+  - принимает координаты другого робота (см. on_peer_coords())
+
+Соединение одно (RFCOMM стрим), но полнодуплексное: приём и отправка
+работают в параллельных потоках поверх одного сокета.
+
 Требует предварительной настройки (см. BT_QUICK.txt):
   - compat-режим bluetoothd
-  - sdptool add --channel=1 SP на СЕРВЕРЕ
-  - сопряжение устройств (bluetoothctl pair/trust, с ОДНОЙ стороны)
+  - sdptool add --channel=1 SP на устройстве, которое слушает (--listen)
+  - сопряжение устройств (bluetoothctl pair/trust, инициатор - одна сторона)
 
 Использование:
-  # На устройстве-источнике координат (например, лидар/камера) - сервер:
-  sudo python3 bt_coords.py --server robotB
+  # На robotA - слушает входящее соединение (роль "listen" при первом запуске):
+  sudo python3 bt_coords.py --listen --peer robotB
 
-  # На устройстве-получателе координат - клиент:
-  sudo python3 bt_coords.py --client robotA
+  # На robotB - подключается к robotA (роль "connect"):
+  sudo python3 bt_coords.py --connect robotA
+
+После установления соединения ОБЕ стороны равноправны - каждая и шлёт,
+и принимает координаты одновременно.
 """
 
 import json
 import socket
 import struct
 import sys
+import threading
 import time
 from argparse import ArgumentParser
 from pathlib import Path
@@ -33,6 +43,8 @@ BT_SECURITY_SDP = 0
 
 PACKET_FORMAT = "<Ifff"  # seq (uint32), x, y, yaw (float32 each), little-endian
 PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
+
+_running = True
 
 
 def load_device_config():
@@ -52,21 +64,106 @@ def set_no_security(sock):
         print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
 
 
+def get_my_coords():
+    """
+    Возвращает ТЕКУЩИЕ координаты этого робота: (x, y, yaw).
+
+    ЗАГЛУШКА: замените на реальный источник (одометрия, лидар, SLAM и т.п.).
+    Например, читать из общей переменной/очереди, которую обновляет
+    ваш модуль позиционирования.
+    """
+    t = time.time()
+    return (1.0 * (t % 10), 2.0, (t * 0.5) % 6.28)
+
+
+def on_peer_coords(peer_id, seq, x, y, yaw):
+    """
+    Вызывается при получении координат от другого робота.
+
+    ЗАГЛУШКА: замените print() на реальную обработку
+    (обновление модели мира, навигация и т.п.).
+    """
+    print(f"  ← [{peer_id}] #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
+
+
 def pack_coords(seq, x, y, yaw):
     return struct.pack(PACKET_FORMAT, seq, x, y, yaw)
 
 
 def unpack_coords(data):
-    seq, x, y, yaw = struct.unpack(PACKET_FORMAT, data)
-    return seq, x, y, yaw
+    return struct.unpack(PACKET_FORMAT, data)
 
 
-def run_server(my_id, peer_id, channel=1):
-    """
-    Сервер (получатель координат): принимает пакеты x,y,yaw и печатает их.
-    Замените print() на вашу логику обработки координат.
-    """
-    print(f"[{my_id}] Запуск BT сервера координат на канале {channel}...")
+def sender_loop(sock, my_id, rate_hz):
+    """Поток: периодически отправляет свои координаты"""
+    global _running
+    period = 1.0 / rate_hz
+    seq = 0
+
+    while _running:
+        x, y, yaw = get_my_coords()
+        try:
+            sock.send(pack_coords(seq, x, y, yaw))
+            print(f"  → [{my_id}] #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
+        except OSError as e:
+            print(f"  ✗ Ошибка отправки: {e}", file=sys.stderr)
+            _running = False
+            break
+
+        seq += 1
+        time.sleep(period)
+
+
+def receiver_loop(sock, peer_id):
+    """Поток: непрерывно принимает координаты пира"""
+    global _running
+    buf = b""
+
+    while _running:
+        try:
+            data = sock.recv(1024)
+        except OSError as e:
+            print(f"  ✗ Ошибка приёма: {e}", file=sys.stderr)
+            _running = False
+            break
+
+        if not data:
+            print(f"\n[{peer_id}] Соединение закрыто пиром")
+            _running = False
+            break
+
+        buf += data
+        while len(buf) >= PACKET_SIZE:
+            packet, buf = buf[:PACKET_SIZE], buf[PACKET_SIZE:]
+            seq, x, y, yaw = unpack_coords(packet)
+            on_peer_coords(peer_id, seq, x, y, yaw)
+
+
+def run_duplex(sock, my_id, peer_id, rate_hz):
+    """Запускает приём и отправку параллельно поверх установленного соединения"""
+    global _running
+    _running = True
+
+    t_send = threading.Thread(target=sender_loop, args=(sock, my_id, rate_hz), daemon=True)
+    t_recv = threading.Thread(target=receiver_loop, args=(sock, peer_id), daemon=True)
+
+    t_send.start()
+    t_recv.start()
+
+    try:
+        while _running:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print(f"\n[{my_id}] Остановлено пользователем")
+        _running = False
+
+    t_send.join(timeout=1)
+    t_recv.join(timeout=1)
+
+
+def run_listen(my_id, peer_id, channel=1, rate_hz=10):
+    """Слушает входящее соединение, потом переходит в дуплексный режим"""
+    print(f"[{my_id}] Жду подключения от {peer_id} на канале {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -75,50 +172,22 @@ def run_server(my_id, peer_id, channel=1):
     try:
         sock.bind((socket.BDADDR_ANY, channel))
         sock.listen(1)
-        print(f"  Слушаю на канале {channel}...")
 
         conn, addr = sock.accept()
         print(f"  ✓ Подключено: {addr}\n")
-        print("  === Приём координат (Ctrl+C для остановки) ===")
+        print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
 
-        buf = b""
-        count = 0
-        t_start = time.time()
-
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                print(f"\n[{my_id}] Соединение закрыто пиром")
-                break
-
-            buf += data
-            while len(buf) >= PACKET_SIZE:
-                packet, buf = buf[:PACKET_SIZE], buf[PACKET_SIZE:]
-                seq, x, y, yaw = unpack_coords(packet)
-                count += 1
-                print(f"  ← #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
-
-        elapsed = time.time() - t_start
-        rate = count / elapsed if elapsed > 0 else 0
-        print(f"\n  Получено пакетов: {count} за {elapsed:.1f}с ({rate:.1f} пак/сек)")
-
+        run_duplex(conn, my_id, peer_id, rate_hz)
         conn.close()
-    except KeyboardInterrupt:
-        print(f"\n[{my_id}] Остановлено пользователем")
     except Exception as e:
         print(f"  ✗ Ошибка: {e}", file=sys.stderr)
     finally:
         sock.close()
 
 
-def run_client(my_id, peer_id, bd_addr, channel=1, rate_hz=10, source=None):
-    """
-    Клиент (источник координат): отправляет x,y,yaw с заданной частотой.
-    По умолчанию отправляет тестовые синтетические координаты.
-    Для реальных данных подключите source() - функцию без аргументов,
-    возвращающую (x, y, yaw).
-    """
-    print(f"[{my_id}] Подключение к {bd_addr} на канале {channel}...")
+def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10):
+    """Подключается к слушающей стороне, потом переходит в дуплексный режим"""
+    print(f"[{my_id}] Подключение к {peer_id} ({bd_addr}) на канале {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     set_no_security(sock)
@@ -127,33 +196,9 @@ def run_client(my_id, peer_id, bd_addr, channel=1, rate_hz=10, source=None):
         sock.bind((socket.BDADDR_ANY, 0))
         sock.connect((bd_addr, channel))
         print(f"  ✓ Подключено\n")
-        print(f"  === Отправка координат с частотой {rate_hz} Гц (Ctrl+C для остановки) ===")
+        print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
 
-        period = 1.0 / rate_hz
-        seq = 0
-        t_start = time.time()
-
-        while True:
-            if source is not None:
-                x, y, yaw = source()
-            else:
-                # Тестовые данные - синтетическое движение по кругу
-                t = time.time() - t_start
-                x = 1.0 * (t % 10)
-                y = 2.0
-                yaw = (t * 0.5) % 6.28
-
-            packet = pack_coords(seq, x, y, yaw)
-            sock.send(packet)
-            print(f"  → #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
-
-            seq += 1
-            time.sleep(period)
-
-    except KeyboardInterrupt:
-        elapsed = time.time() - t_start
-        rate = seq / elapsed if elapsed > 0 else 0
-        print(f"\n[{my_id}] Остановлено. Отправлено {seq} пакетов за {elapsed:.1f}с ({rate:.1f} пак/сек)")
+        run_duplex(sock, my_id, peer_id, rate_hz)
     except Exception as e:
         print(f"  ✗ Ошибка: {e}", file=sys.stderr)
     finally:
@@ -161,15 +206,16 @@ def run_client(my_id, peer_id, bd_addr, channel=1, rate_hz=10, source=None):
 
 
 def main():
-    parser = ArgumentParser(description="Передача координат (x, y, yaw) по Bluetooth")
+    parser = ArgumentParser(description="Двусторонний обмен координатами (x, y, yaw) по Bluetooth")
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--server", type=str, metavar="TARGET_ID", help="Принимать координаты (сервер)")
-    group.add_argument("--client", type=str, metavar="TARGET_ID", help="Отправлять координаты (клиент)")
+    group.add_argument("--listen", action="store_true", help="Ждать входящее соединение")
+    group.add_argument("--connect", type=str, metavar="TARGET_ID", help="Подключиться к TARGET_ID")
 
-    parser.add_argument("--force-addr", type=str, help="Явный Bluetooth адрес")
+    parser.add_argument("--peer", type=str, metavar="TARGET_ID", help="ID пира (для --listen, для логов)")
+    parser.add_argument("--force-addr", type=str, help="Явный Bluetooth адрес (для --connect)")
     parser.add_argument("--channel", type=int, default=1, help="RFCOMM канал (по умолчанию 1)")
-    parser.add_argument("--rate", type=float, default=10.0, help="Частота отправки, Гц (по умолчанию 10)")
+    parser.add_argument("--rate", type=float, default=10.0, help="Частота отправки своих координат, Гц")
 
     args = parser.parse_args()
 
@@ -177,15 +223,17 @@ def main():
     my_id = config.get("id", "unknown")
     print(f"ID={my_id}\n")
 
-    if args.server:
-        run_server(my_id, args.server, args.channel)
+    if args.listen:
+        peer_id = args.peer or "peer"
+        run_listen(my_id, peer_id, args.channel, args.rate)
     else:
-        bd_addr = config.get("peers", {}).get(args.client, {}).get("bd_addr") or args.force_addr
+        peer_id = args.connect
+        bd_addr = config.get("peers", {}).get(peer_id, {}).get("bd_addr") or args.force_addr
         if not bd_addr:
-            print(f"Ошибка: адрес для {args.client} не найден в конфиге", file=sys.stderr)
+            print(f"Ошибка: адрес для {peer_id} не найден в конфиге", file=sys.stderr)
             print(f"  Используйте --force-addr или bt_setup.py --save-peer", file=sys.stderr)
             sys.exit(1)
-        run_client(my_id, args.client, bd_addr, args.channel, args.rate)
+        run_connect(my_id, peer_id, bd_addr, args.channel, args.rate)
 
 
 if __name__ == "__main__":
