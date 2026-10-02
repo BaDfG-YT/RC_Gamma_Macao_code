@@ -1,20 +1,20 @@
 #include <Arduino.h>
 
-// -------------------- EC11 на модуле (синяя плата, KY-040-стиль) --------------------
-// Отличия модуля от "голого" EC11:
-//  - на плате стоят подтяжки 10k к VCC на CLK/DT (иногда и RC-фильтр),
-//    фронты затянуты - старый метод "проверить пин через 300us" пропускал шаги;
-//  - у модуля один полный квадратурный цикл (4 перехода) на один щелчок,
-//    у голого EC11 из старой схемы выходило 2 перехода на щелчок -
-//    отсюда "два щелчка = одно событие".
-// Решение: полный табличный квадратурный декодер (x4) + делитель шагов на щелчок.
+// -------------------- EC11 on module (blue board, KY-040 style) --------------------
+// Differences of the module from a "bare" EC11:
+//  - the board has 10k pull-ups to VCC on CLK/DT (sometimes also an RC filter),
+//    edges are slowed down - the old "check the pin after 300us" method missed steps;
+//  - the module has one full quadrature cycle (4 transitions) per click,
+//    while the bare EC11 from the old circuit produced 2 transitions per click -
+//    hence "two clicks = one event".
+// Solution: a full table-based quadrature decoder (x4) + a steps-per-click divider.
 
 const int ENC_A = 4;
 const int ENC_B = 2;
 const int ENC_SW = 3;
 
-// Сколько квадратурных переходов приходится на один щелчок (детент).
-// Модуль KY-040/EC11: 4. Если события будут идти через щелчок - поставь 2.
+// How many quadrature transitions correspond to one click (detent).
+// KY-040/EC11 module: 4. If events start firing every other click - set to 2.
 const int STEPS_PER_DETENT = 4;
 
 enum EncEvent
@@ -31,17 +31,17 @@ enum EncEvent
     ENC_BUTTON_RELEASED = 6
 };
 
-// -------------------- состояние --------------------
-static uint8_t prevState = 0;   // предыдущее состояние (A<<1)|B
-static int8_t stepAcc = 0;      // аккумулятор квадратурных шагов
+// -------------------- state --------------------
+static uint8_t prevState = 0;   // previous state (A<<1)|B
+static int8_t stepAcc = 0;      // quadrature step accumulator
 
-static bool btnStable = HIGH;   // подтверждённое состояние кнопки
-static bool btnLastRaw = HIGH;  // последнее сырое чтение
+static bool btnStable = HIGH;   // confirmed button state
+static bool btnLastRaw = HIGH;  // last raw reading
 static unsigned long btnLastChange = 0;
 const unsigned long BTN_DEBOUNCE_MS = 20;
 
-// Таблица переходов квадратуры: индекс = (prev<<2)|curr,
-// значение = +1 (по часовой), -1 (против), 0 (нет движения/дребезг).
+// Quadrature transition table: index = (prev<<2)|curr,
+// value = +1 (clockwise), -1 (counterclockwise), 0 (no movement/bounce).
 static const int8_t QUAD_TABLE[16] = {
     0, -1, +1, 0,
     +1, 0, 0, -1,
@@ -55,8 +55,8 @@ static inline uint8_t readAB()
 
 void encoder_init()
 {
-    // Подтяжки оставляем включёнными: на CLK/DT они продублируют платные
-    // (не мешает), а на SW у многих модулей своей подтяжки нет - там она обязательна.
+    // Keep pull-ups enabled: on CLK/DT they duplicate the on-board ones
+    // (harmless), while on SW many modules have no pull-up of their own - there it's required.
     pinMode(ENC_A, INPUT_PULLUP);
     pinMode(ENC_B, INPUT_PULLUP);
     pinMode(ENC_SW, INPUT_PULLUP);
@@ -71,8 +71,8 @@ void encoder_init()
 
 EncEvent encoder_read()
 {
-    // ---------- кнопка: неблокирующий антидребезг ----------
-    bool raw = digitalRead(ENC_SW); // LOW = нажата
+    // ---------- button: non-blocking debounce ----------
+    bool raw = digitalRead(ENC_SW); // LOW = pressed
 
     if (raw != btnLastRaw)
     {
@@ -85,7 +85,7 @@ EncEvent encoder_read()
         return (btnStable == LOW) ? ENC_BUTTON_PRESSED : ENC_BUTTON_RELEASED;
     }
 
-    // ---------- поворот: табличный квадратурный декодер ----------
+    // ---------- rotation: table-based quadrature decoder ----------
     uint8_t curr = readAB();
 
     if (curr != prevState)
@@ -97,9 +97,9 @@ EncEvent encoder_read()
         {
             stepAcc += dir;
 
-            // Событие отдаём, только когда набрался полный щелчок
-            // И энкодер стоит в детенте (оба канала HIGH у EC11 в покое) -
-            // это отсекает половинчатые шаги при медленном вращении.
+            // We only emit an event once a full click has accumulated
+            // and the encoder is sitting in a detent (both channels HIGH for EC11 at rest) -
+            // this filters out half-steps during slow rotation.
             if (stepAcc >= STEPS_PER_DETENT)
             {
                 stepAcc = 0;
@@ -115,8 +115,8 @@ EncEvent encoder_read()
         }
         else
         {
-            // Недопустимый переход (пропуск/дребезг) - сбрасываем накопление,
-            // чтобы не насчитать фантомный шаг.
+            // Invalid transition (skip/bounce) - reset the accumulator
+            // so we don't count a phantom step.
             stepAcc = 0;
         }
     }

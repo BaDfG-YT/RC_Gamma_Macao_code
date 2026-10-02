@@ -7,11 +7,11 @@
 #include <Kicker.h>
 #include <MotorDriver.h>
 
-// ==================== Телеуправление с Pi ====================
-// Протокол (строки с Pi по USB Serial):
-//   "MOV,<a>,<b>\n" - скорости моторов; шлётся непрерывно как keepalive
-//   "KICK\n"        - одиночный удар
-// Безопасность: если MOV не приходит дольше DEADMAN_MS - стоп.
+// ==================== Teleoperation from Pi ====================
+// Protocol (lines from Pi over USB Serial):
+//   "MOV,<a>,<b>\n" - motor speeds; sent continuously as a keepalive
+//   "KICK\n"        - single kick
+// Safety: if MOV doesn't arrive for longer than DEADMAN_MS - stop.
 
 static const unsigned long DEADMAN_MS = 400;
 
@@ -63,7 +63,7 @@ static void draw_status()
 
 void setup()
 {
-    Serial.begin(115200); // первой строкой - USB CDC
+    Serial.begin(115200); // first line - USB CDC
     motor_init();
     kick_init();
     interaction_init();
@@ -82,7 +82,7 @@ void loop()
         process_line(line);
     }
 
-    // deadman: связь пропала - стоп
+    // deadman: link lost - stop
     bool alive_now = (millis() - last_mov_ms) < DEADMAN_MS;
     if (!alive_now && link_alive)
     {
@@ -91,7 +91,7 @@ void loop()
         cur_b = 0;
     }
 
-    // перерисовка экрана не чаще 5 раз/сек и только при изменениях
+    // redraw the screen no more than 5 times/sec and only on changes
     static unsigned long t_draw = 0;
     static int drawn_a = 999, drawn_b = 999;
     static bool drawn_alive = false;

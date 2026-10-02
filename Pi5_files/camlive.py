@@ -5,19 +5,19 @@ from picamera2 import Picamera2
 
 app = Flask(__name__)
 
-# ��������� ������
+# Camera setup
 picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"size": (640, 480)}))
 picam2.start()
 
-# ��������� � HSV (���������� ��� �������������)
+# Orange in HSV (tune for your lighting)
 LOWER = np.array([0, 103, 209])
 UPPER = np.array([13, 255, 255])
 MIN_AREA = 100
 
 def gen():
     while True:
-        frame = picam2.capture_array()  # ������ RGB
+        frame = picam2.capture_array()  # comes out as RGB
         bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
@@ -53,5 +53,5 @@ def video():
     return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 if __name__ == "__main__":
-    # 0.0.0.0 ����� ���� �������� �� ����
+    # 0.0.0.0 so it's reachable from the network
     app.run(host="0.0.0.0", port=5000, threaded=True)

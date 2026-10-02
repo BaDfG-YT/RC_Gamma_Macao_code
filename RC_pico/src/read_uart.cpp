@@ -1,14 +1,14 @@
 #include <Arduino.h>
 
-// Тестовая прошивка: отправка x, y, yaw по аппаратному UART на Pi.
-// Формат пакета: 3 float (little-endian), итого 12 байт —
-// совпадает с py-скриптом на Pi (struct.unpack('<fff', data)).
+// Test firmware: sends x, y, yaw over hardware UART to the Pi.
+// Packet format: 3 floats (little-endian), 12 bytes total —
+// matches the py script on the Pi (struct.unpack('<fff', data)).
 //
-// Подключение (проверьте под свою распиновку):
-//   Pico GP0 (TX) -> Pi RX (пин 10, GPIO15)
-//   Pico GP1 (RX) -> Pi TX (пин 8,  GPIO14)
+// Wiring (check against your own pinout):
+//   Pico GP0 (TX) -> Pi RX (pin 10, GPIO15)
+//   Pico GP1 (RX) -> Pi TX (pin 8,  GPIO14)
 //   Pico GND      -> Pi GND
-// TX одного устройства всегда идёт на RX другого (крест-накрест).
+// TX of one device always goes to RX of the other (crossed).
 
 void setup() {
   Serial1.setTX(0);   // GP0 -> TX
@@ -19,7 +19,7 @@ void setup() {
 void loop() {
   static float t = 0.0f;
 
-  // Тестовые значения — заменить на реальные x/y/yaw из вашей логики позиционирования
+  // Test values — replace with real x/y/yaw from your positioning logic
   float x   = sinf(t) * 100.0f;
   float y   = cosf(t) * 100.0f;
   float yaw = fmodf(t * 10.0f, 360.0f);

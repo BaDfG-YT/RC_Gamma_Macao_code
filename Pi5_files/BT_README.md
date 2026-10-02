@@ -1,17 +1,17 @@
-# Тест Bluetooth соединения между распаями
+# Bluetooth connection test between Raspberry Pis
 
-Два скрипта для тестирования Bluetooth (BT) соединения и быстрого обмена данными между двумя Raspberry Pi.
+Two scripts for testing the Bluetooth (BT) connection and quick data exchange between two Raspberry Pi boards.
 
-## Файлы
+## Files
 
-- **bt_test.py** — основной тест соединения и обмена данными
-- **bt_setup.py** — утилита для настройки и сопряжения устройств
+- **bt_test.py** — main connection and data-exchange test
+- **bt_setup.py** — utility for configuring and pairing devices
 
-## Предварительная настройка
+## Prerequisites
 
-### 1. Убедитесь, что у каждого Pi есть device_id
+### 1. Make sure each Pi has a device_id
 
-Каждое устройство должно иметь `device/device_id.local.json`:
+Each device needs a `device/device_id.local.json`:
 
 ```json
 {
@@ -21,43 +21,43 @@
 }
 ```
 
-ID может быть любым уникальным (robotA, robotB, bot1, bot2 и т.д.).
+The ID can be any unique string (robotA, robotB, bot1, bot2, etc.).
 
-### 2. Найдите Bluetooth адреса устройств
+### 2. Find the devices' Bluetooth addresses
 
-На одном из Pi выполните:
+On one of the Pis, run:
 
 ```bash
 python3 bt_setup.py --scan
 ```
 
-Это отсканирует доступные Bluetooth устройства и покажет их адреса (формат: AA:BB:CC:DD:EE:FF).
+This scans for available Bluetooth devices and shows their addresses (format: AA:BB:CC:DD:EE:FF).
 
-### 3. Сопрягите устройства
+### 3. Pair the devices
 
-На каждом Pi:
+On each Pi:
 
 ```bash
-# Сопрячь второе устройство
+# Pair with the other device
 python3 bt_setup.py --pair AA:BB:CC:DD:EE:FF
 
-# Проверить список сопряжённых устройств
+# Check the list of paired devices
 python3 bt_setup.py --list
 ```
 
-### 4. Сохраните адреса в конфиг
+### 4. Save the addresses to the config
 
-На каждом Pi сохраните адрес целевого устройства:
+On each Pi, save the target device's address:
 
 ```bash
-# На robotA: сохранить адрес robotB
+# On robotA: save robotB's address
 python3 bt_setup.py --save-peer robotB AA:BB:CC:DD:EE:FF
 
-# На robotB: сохранить адрес robotA
+# On robotB: save robotA's address
 python3 bt_setup.py --save-peer robotA 11:22:33:44:55:66
 ```
 
-Это обновит `device_id.local.json`:
+This updates `device_id.local.json`:
 
 ```json
 {
@@ -73,116 +73,116 @@ python3 bt_setup.py --save-peer robotA 11:22:33:44:55:66
 }
 ```
 
-## Запуск теста
+## Running the test
 
-### Вариант 1: Простый тест (если известны адреса)
+### Option 1: Simple test (if addresses are known)
 
-**На первом Pi (сервер):**
+**On the first Pi (server):**
 ```bash
 python3 bt_test.py --server --target-device robotB --bd-addr AA:BB:CC:DD:EE:FF
 ```
 
-**На втором Pi (клиент):**
+**On the second Pi (client):**
 ```bash
 python3 bt_test.py --client --target-device robotA --bd-addr 11:22:33:44:55:66
 ```
 
-Сервер будет ждать подключения от клиента.
+The server will wait for a connection from the client.
 
-### Вариант 2: С автоматическим получением адреса из конфига
+### Option 2: Automatically read the address from the config
 
-Можно расширить скрипт bt_test.py для автоматического чтения адреса из `device_id.local.json`.
+bt_test.py can be extended to automatically read the address from `device_id.local.json`.
 
-## Что тестируется
+## What is tested
 
-1. **Соединение (RFCOMM)** — базовое установление соединения
-2. **PING/PONG** — проверка отклика (3 итерации)
-3. **Быстрый обмен данными** — отправка позиции (x, y, yaw) с подтверждением (5 итераций)
-4. **Пропускная способность** — 100 пакетов подряд с замером времени
+1. **Connection (RFCOMM)** — basic connection establishment
+2. **PING/PONG** — round-trip check (3 iterations)
+3. **Fast data exchange** — sending position (x, y, yaw) with acknowledgment (5 iterations)
+4. **Throughput** — 100 packets in a row with timing
 
-## Типы сообщений
+## Message types
 
-| Тип | Код | Описание | Формат |
+| Type | Code | Description | Format |
 |-----|-----|---------|--------|
-| PING | 1 | Проверка связи | `[1][seq:4]` |
-| PONG | 2 | Ответ на PING | `[2][seq:4]` |
-| FAST_DATA | 3 | Данные позиции | `[3][seq:4][x:4][y:4][yaw:4]` |
-| ACK | 4 | Подтверждение | `[4][seq:4]` |
-| END | 99 | Конец теста | `[99]` |
+| PING | 1 | Connectivity check | `[1][seq:4]` |
+| PONG | 2 | Reply to PING | `[2][seq:4]` |
+| FAST_DATA | 3 | Position data | `[3][seq:4][x:4][y:4][yaw:4]` |
+| ACK | 4 | Acknowledgment | `[4][seq:4]` |
+| END | 99 | End of test | `[99]` |
 
-Все числовые значения — little-endian (как в uart_sharing.py).
+All numeric values are little-endian (same as in uart_sharing.py).
 
-## Устранение неполадок
+## Troubleshooting
 
-### Ошибка: "No such file or directory" при запуске на Linux
+### Error: "No such file or directory" when running on Linux
 
-На некоторых системах нужны зависимости:
+Some systems need extra dependencies:
 
 ```bash
 sudo apt-get install python3-bluez bluez-tools
 ```
 
-### Ошибка: "Connection refused"
+### Error: "Connection refused"
 
-- Убедитесь, что сервер запущен первым
-- Проверьте правильность Bluetooth адреса
-- Убедитесь, что устройства сопряжены
+- Make sure the server is started first
+- Check that the Bluetooth address is correct
+- Make sure the devices are paired
 
-### Timeout при подключении
+### Timeout when connecting
 
-- Убедитесь, что оба устройства включены и Bluetooth активен
-- Используйте `bluetoothctl` для проверки статуса:
+- Make sure both devices are powered on and Bluetooth is active
+- Use `bluetoothctl` to check status:
   ```bash
   bluetoothctl show
   bluetoothctl paired-devices
   ```
 
-### Низкая скорость
+### Low throughput
 
-Это может быть нормально для RFCOMM — его пропускная способность ограничена. Если нужна более высокая скорость, рассмотрите:
-- BLE (Bluetooth Low Energy) с пользовательским GATT-сервисом
-- SPP (Serial Port Profile) с выделенным каналом
-- Проводное соединение (USB, UART, CAN)
+This can be normal for RFCOMM — its throughput is limited. If you need higher speed, consider:
+- BLE (Bluetooth Low Energy) with a custom GATT service
+- SPP (Serial Port Profile) with a dedicated channel
+- A wired connection (USB, UART, CAN)
 
-## Примеры вывода
+## Example output
 
-### Сервер
+### Server
 
 ```
-[robotA] Запуск Bluetooth сервера, канал 1
-  Ожидание подключения от robotB...
-  ✓ Подключено: ('AA:BB:CC:DD:EE:FF', 0)
+[robotA] Starting Bluetooth server, channel 1
+  Waiting for connection from robotB...
+  ✓ Connected: ('AA:BB:CC:DD:EE:FF', 0)
 
-[robotA] СЕРВЕР — начало теста...
-  ← PING #0 (5 байт)
+[robotA] SERVER — starting test...
+  ← PING #0 (5 bytes)
   → PONG #0
-  ← PING #1 (5 байт)
+  ← PING #1 (5 bytes)
   → PONG #1
   ← DATA #0: x=1.500, y=2.000, yaw=0.000
   → ACK #0
   ...
-  ← Сигнал конца теста
-[robotA] Тест завершён ✓
+  ← End-of-test signal
+[robotA] Test complete ✓
 ```
 
-### Клиент
+### Client
 
 ```
-[robotB] Запуск Bluetooth клиента
-  Подключение к robotA (11:22:33:44:55:66) на канале 1...
-  ✓ Подключено к robotA
+[robotB] Starting Bluetooth client
+  Connecting to robotA (11:22:33:44:55:66) on channel 1...
+  ✓ Connected to robotA
 
-[robotB] КЛИЕНТ — начало теста...
-  === Тест PING/PONG ===
+[robotB] CLIENT — starting test...
+  === PING/PONG test ===
   → PING #0
   ← PONG #0 ✓
   ...
-  === Тест быстрого обмена данными (x, y, yaw) ===
+  === Fast data exchange test (x, y, yaw) ===
   → DATA #0: x=1.500, y=2.000, yaw=0.000
   ← ACK #0 ✓
   ...
-  === Тест скорости (100 пакетов подряд) ===
-  Отправлено: 100 пакетов за 0.523с (191.2 пак/сек)
+  === Speed test (100 packets in a row) ===
+  Sent: 100 packets in 0.523s (191.2 pkt/s)
   ...
-  [robotB] Тест завершён ✓
+  [robotB] Test complete ✓
 ```

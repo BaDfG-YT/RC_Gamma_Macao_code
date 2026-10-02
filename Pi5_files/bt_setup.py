@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Утилита для настройки Bluetooth соединения между распаями.
+Utility for setting up a Bluetooth connection between Raspberry Pis.
 
-Использование:
-  # Сканировать доступные Bluetooth устройства
+Usage:
+  # Scan for available Bluetooth devices
   python3 bt_setup.py --scan
 
-  # Сопрячь устройство
+  # Pair a device
   python3 bt_setup.py --pair AA:BB:CC:DD:EE:FF
 
-  # Получить список сопряжённых устройств
+  # Get the list of paired devices
   python3 bt_setup.py --list
 
-  # Сохранить адрес в device_id.local.json
+  # Save an address to device_id.local.json
   python3 bt_setup.py --save-peer robotA AA:BB:CC:DD:EE:FF
 """
 
@@ -27,7 +27,7 @@ DEVICE_ID_PATH = DEVICE_DIR / "device_id.local.json"
 
 
 def load_device_id():
-    """Загружает конфиг устройства"""
+    """Loads the device config"""
     try:
         with open(DEVICE_ID_PATH, encoding="utf-8") as f:
             return json.load(f)
@@ -36,27 +36,27 @@ def load_device_id():
 
 
 def save_device_id(data):
-    """Сохраняет конфиг устройства"""
+    """Saves the device config"""
     DEVICE_DIR.mkdir(parents=True, exist_ok=True)
     with open(DEVICE_ID_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def run_command(cmd):
-    """Запускает shell команду и возвращает вывод"""
+    """Runs a shell command and returns its output"""
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
         return result.stdout.strip(), result.returncode
     except subprocess.TimeoutExpired:
         return "", -1
     except Exception as e:
-        print(f"Ошибка выполнения команды: {e}", file=sys.stderr)
+        print(f"Command execution error: {e}", file=sys.stderr)
         return "", -1
 
 
 def scan_devices():
-    """Сканирует доступные Bluetooth устройства"""
-    print("Сканирование Bluetooth устройств (15 секунд)...\n")
+    """Scans for available Bluetooth devices"""
+    print("Scanning for Bluetooth devices (15 seconds)...\n")
     output, _ = run_command("bluetoothctl --timeout 15 scan on 2>/dev/null | grep -E '\\[NEW\\]|Device'")
 
     devices = {}
@@ -69,17 +69,17 @@ def scan_devices():
                 devices[addr] = name
 
     if devices:
-        print("Найденные устройства:")
+        print("Devices found:")
         for addr, name in devices.items():
             print(f"  {addr}  {name}")
     else:
-        print("Устройства не найдены. Убедитесь, что Bluetooth включён.")
+        print("No devices found. Make sure Bluetooth is enabled.")
 
     return devices
 
 
 def list_paired():
-    """Показывает список сопряжённых устройств"""
+    """Shows the list of paired devices"""
     output, _ = run_command("bluetoothctl paired-devices")
 
     devices = {}
@@ -92,32 +92,32 @@ def list_paired():
                 devices[addr] = name
 
     if devices:
-        print("Сопряжённые устройства:")
+        print("Paired devices:")
         for addr, name in devices.items():
             print(f"  {addr}  {name}")
     else:
-        print("Сопряжённых устройств не найдено.")
+        print("No paired devices found.")
 
     return devices
 
 
 def pair_device(bd_addr):
-    """Сопрягает устройство"""
-    print(f"Сопряжение с {bd_addr}...")
+    """Pairs a device"""
+    print(f"Pairing with {bd_addr}...")
 
     run_command(f"bluetoothctl trust {bd_addr}")
     output, code = run_command(f"bluetoothctl pair {bd_addr}")
 
     if code == 0 and "successful" in output.lower():
-        print(f"✓ Успешно сопряжено")
+        print(f"✓ Successfully paired")
         return True
     else:
-        print(f"✗ Ошибка сопряжения: {output}")
+        print(f"✗ Pairing error: {output}")
         return False
 
 
 def save_peer(peer_id, bd_addr):
-    """Сохраняет адрес пирующего устройства в конфиг"""
+    """Saves the peer device's address to the config"""
     device_id = load_device_id()
 
     if "peers" not in device_id:
@@ -129,26 +129,26 @@ def save_peer(peer_id, bd_addr):
     }
 
     save_device_id(device_id)
-    print(f"✓ Адрес {peer_id} сохранён: {bd_addr}")
-    print(f"  Файл: {DEVICE_ID_PATH}")
+    print(f"✓ Address for {peer_id} saved: {bd_addr}")
+    print(f"  File: {DEVICE_ID_PATH}")
 
 
 def show_config():
-    """Показывает текущий конфиг устройства"""
+    """Shows the current device config"""
     data = load_device_id()
-    print(f"Конфиг устройства ({DEVICE_ID_PATH}):")
+    print(f"Device config ({DEVICE_ID_PATH}):")
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def main():
-    parser = ArgumentParser(description="Утилита для настройки Bluetooth соединения")
+    parser = ArgumentParser(description="Utility for setting up a Bluetooth connection")
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--scan", action="store_true", help="Сканировать Bluetooth устройства")
-    group.add_argument("--list", action="store_true", help="Список сопряжённых устройств")
-    group.add_argument("--pair", type=str, metavar="BD_ADDR", help="Сопрячь устройство (например, AA:BB:CC:DD:EE:FF)")
-    group.add_argument("--save-peer", nargs=2, metavar=("PEER_ID", "BD_ADDR"), help="Сохранить адрес пира в конфиг")
-    group.add_argument("--config", action="store_true", help="Показать конфиг устройства")
+    group.add_argument("--scan", action="store_true", help="Scan for Bluetooth devices")
+    group.add_argument("--list", action="store_true", help="List paired devices")
+    group.add_argument("--pair", type=str, metavar="BD_ADDR", help="Pair a device (e.g., AA:BB:CC:DD:EE:FF)")
+    group.add_argument("--save-peer", nargs=2, metavar=("PEER_ID", "BD_ADDR"), help="Save a peer's address to the config")
+    group.add_argument("--config", action="store_true", help="Show the device config")
 
     args = parser.parse_args()
 

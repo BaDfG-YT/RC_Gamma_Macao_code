@@ -15,7 +15,7 @@ PKT = 47
 HDR = b"\x54\x2C"
 NPTS = 12
 
-# --- checksum options (����� --check none) ---
+# --- checksum options (disable with --check none) ---
 
 
 def add_ok(mv): return (sum(mv[:46]) & 0xFF) == mv[46]
@@ -40,7 +40,7 @@ def verify(mv, mode):
         return True
     return add_ok(mv) or crc_ok(mv)
 
-# --- ������ ������ � �������� ����� (���� � ��������, ��������� ��) ---
+# --- packet parsing into polar coordinates (angle in degrees, distance in mm) ---
 
 
 def parse_packet_polar(mv):
@@ -76,7 +76,7 @@ def autodetect(vid=None, pid=None):
         return p.device
     return None
 
-# --- serial worker: ����� + state-machine, ��� ('NEW',) � ('POLAR', ang, dist) ---
+# --- serial worker: parsing + state-machine, outputs ('NEW',) and ('POLAR', ang, dist) ---
 
 
 def serial_worker(get_port, baud, out_q, stop_evt, check_mode, hyst, stats,
@@ -91,7 +91,7 @@ def serial_worker(get_port, baud, out_q, stop_evt, check_mode, hyst, stats,
         ser = None
         try:
             ser = serial.Serial(port=port, baudrate=baud, timeout=timeout)
-            # ������� ������� DTR/RTS
+            # toggle DTR/RTS lines
             ser.dtr = False
             ser.rts = False
             time.sleep(0.05)
@@ -136,11 +136,11 @@ def serial_worker(get_port, baud, out_q, stop_evt, check_mode, hyst, stats,
                         if idx == PKT:
                             mv = memoryview(pkt)
                             if verify(mv, check_mode):
-                                # ����/���������
+                                # parse/dispatch
                                 ang, dist = parse_packet_polar(mv)
                                 if ang is not None:
                                     out_q.append(("POLAR", ang, dist))
-                                # ������ ������ ������� � ��������� ������������ 100 ��
+                                # start of a new sweep - debounced with a 100 ms minimum
                                 s = (int(mv[4]) | (int(mv[5]) << 8))/100.0
                                 now = time.time()
                                 if prev is not None and prev > (360.0-hyst) and s < hyst and (now-last_new_ts) > 0.10:
@@ -168,7 +168,7 @@ def serial_worker(get_port, baud, out_q, stop_evt, check_mode, hyst, stats,
             except Exception:
                 pass
 
-# --- ������������: ���������� ����� (������� ����� �� �����) ---
+# --- visualization: stable sweep (double-buffer per angle) ---
 
 
 def main():
@@ -186,7 +186,7 @@ def main():
     ap.add_argument(
         "--check", choices=["auto", "add", "crc", "none"], default="none")
     ap.add_argument("--ang-res", type=float, default=0.1,
-                    help="��� �� ���� (�), ����. 0.1 => 3600 �����")
+                    help="bin step in degrees, e.g. 0.1 => 3600 bins")
     args = ap.parse_args()
 
     get_port = (lambda: autodetect(args.vid, args.pid)
@@ -203,7 +203,7 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((args.w, args.h))
     pygame.display.set_caption(
-        "LD19 stable sweep � ������: ���, ���: ���, R reset, C clear")
+        "LD19 stable sweep - drag: pan, wheel: zoom, R reset, C clear")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Consolas,DejaVu Sans Mono,Monospace", 16)
 
@@ -213,11 +213,11 @@ def main():
     offx = offy = 0.0
     last_flush = time.time()
 
-    # ������� �������� �����
+    # fixed-angle bins
     res = args.ang_res
     bins = int(round(360.0/res))
-    dist_cur = np.full(bins, -1.0, dtype=np.float32)   # ������� ������
-    # ����������� ������ (������ ������ ���)
+    dist_cur = np.full(bins, -1.0, dtype=np.float32)   # current sweep
+    # last completed sweep (always shows the previous full revolution)
     dist_last = np.full(bins, -1.0, dtype=np.float32)
     ang_bins_deg = (np.arange(bins, dtype=np.float32)+0.5)*res
     ang_bins_rad = np.deg2rad(ang_bins_deg)
@@ -228,7 +228,7 @@ def main():
         m = (sx >= 0) & (sx < args.w) & (sy >= 0) & (sy < args.h)
         return sx[m], sy[m]
 
-    last_swap_ts = 0.0  # ������ �� ������ swap
+    last_swap_ts = 0.0  # debounce for the swap event
     running = True
     panning = False
     last = (0, 0)
@@ -270,26 +270,26 @@ def main():
                     dist_last.fill(-1.0)
                     frame[:] = 0
 
-        # ����
+        # queue
         need_swap = False
         while q:
             it = q.popleft()
             if it[0] == "NEW":
-                # �������� NEW: �� ���� ��� � 80 ��
+                # debounce NEW: no more often than once per 80 ms
                 if time.time() - last_swap_ts > 0.08:
                     need_swap = True
             elif it[0] == "POLAR":
                 _, ang_deg, dist_mm = it
                 idx = np.floor(ang_deg / res + 0.5).astype(np.int32) % bins
-                dist_cur[idx] = dist_mm  # ��������� ����� �� ���
+                dist_cur[idx] = dist_mm  # update the bin by index
 
-        # ���� �������� ����� ���� � swap ������� � ������������
+        # if a full sweep came in — swap the buffers and clear the current one
         if need_swap:
             dist_last[:] = dist_cur
             dist_cur.fill(-1.0)
             last_swap_ts = time.time()
 
-        # ����������� �� �������: ������ ������ dist_last
+        # rendering by timer: always draws dist_last
         if (time.time()-last_flush)*1000.0 >= args.flush_ms:
             frame[:] = 0
             m = dist_last >= 0.0
@@ -302,7 +302,7 @@ def main():
                     xs.astype(np.float32), ys.astype(np.float32))
                 frame[sx, sy] = (230, 230, 230)
 
-            # �����
+            # axes
             frame[:, int(args.h*0.5+offy), :] = (60, 60, 60)
             frame[int(args.w*0.5+offx), :, :] = (60, 60, 60)
 
@@ -310,7 +310,7 @@ def main():
             px[:] = frame
             del px
             screen.blit(surface, (0, 0))
-            status = f"port:{get_port() or 'N/A'} baud:{args.baud} bytes/s:{stats['bytes']} hdr/s:{stats['hdr']} bins:{bins} res:{res}� fps:{int(clock.get_fps())}"
+            status = f"port:{get_port() or 'N/A'} baud:{args.baud} bytes/s:{stats['bytes']} hdr/s:{stats['hdr']} bins:{bins} res:{res}° fps:{int(clock.get_fps())}"
             screen.blit(font.render(status, True, (255, 255, 255)), (10, 10))
             pygame.display.flip()
             last_flush = time.time()

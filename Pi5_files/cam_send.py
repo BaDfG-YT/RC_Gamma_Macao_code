@@ -6,30 +6,30 @@ import time
 import math
 
 # =========================
-# Настройки камеры
+# Camera settings
 # =========================
 FRAME_W = 640
 FRAME_H = 480
 
-# Центр зеркала на изображении
+# Mirror center in the image
 CENTER_X = FRAME_W / 2
 CENTER_Y = FRAME_H / 2
 
 # =========================
-# HSV диапазоны
+# HSV ranges
 # =========================
 
-# Мяч (оранжевый) — оставить как есть
+# Ball (orange) — leave as is
 BALL_LOWER = np.array([4, 110, 150])
 BALL_UPPER = np.array([23, 210, 255])
 BALL_MIN_AREA = 50
 
-# Жёлтые ворота
+# Yellow goal
 YELLOW_LOWER = np.array([25, 163, 147])
 YELLOW_UPPER = np.array([40, 255, 255])
 YELLOW_MIN_AREA = 200
 
-# Синие ворота
+# Blue goal
 BLUE_LOWER = np.array([90, 73, 80])
 BLUE_UPPER = np.array([134, 255, 255])
 BLUE_MIN_AREA = 200
@@ -38,14 +38,14 @@ BLUE_MIN_AREA = 200
 # BLUE_MIN_AREA = 200
 
 # =========================
-# Настройки USB -> Pico
+# USB -> Pico settings
 # =========================
 PICO_PORT = "/dev/ttyACM0"
 PICO_BAUD = 115200
 SEND_PERIOD = 0.05
 
 # =========================
-# Инициализация
+# Initialization
 # =========================
 picam2 = Picamera2()
 picam2.configure(
@@ -82,7 +82,7 @@ def preprocess_mask(hsv, lower, upper):
     return mask
 
 
-# Для мяча — как было: по крупнейшему контуру
+# For the ball — same as before: use the largest contour
 def find_object_angle_area(hsv, lower, upper, min_area):
     mask = preprocess_mask(hsv, lower, upper)
 
@@ -106,7 +106,7 @@ def find_object_angle_area(hsv, lower, upper, min_area):
     return angle, area_to_send
 
 
-# Для ворот — центр и площадь всех точек цвета
+# For the goals — center and area of all matching color pixels
 def find_color_cloud_angle_area(hsv, lower, upper, min_area):
     mask = preprocess_mask(hsv, lower, upper)
 
@@ -136,12 +136,12 @@ def find_and_send_all():
     bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
-    # Мяч — по крупнейшему контуру
+    # Ball — use the largest contour
     ball_angle, ball_area = find_object_angle_area(
         hsv, BALL_LOWER, BALL_UPPER, BALL_MIN_AREA
     )
 
-    # Ворота — по всем точкам цвета
+    # Goals — use all matching color pixels
     yellow_angle, yellow_area = find_color_cloud_angle_area(
         hsv, YELLOW_LOWER, YELLOW_UPPER, YELLOW_MIN_AREA
     )
@@ -185,4 +185,4 @@ finally:
     except Exception:
         pass
 
-#проверочка привет как дела
+#test check hello how's it going

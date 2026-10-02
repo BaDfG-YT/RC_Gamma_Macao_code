@@ -4,5 +4,5 @@
 
 void breaker_init();
 bool ball_hole();
-int  breaker_raw();       // сырое значение, для отладки
-int  breaker_filtered();  // отфильтрованное значение, для отладки
+int  breaker_raw();       // raw value, for debugging
+int  breaker_filtered();  // filtered value, for debugging

@@ -68,7 +68,7 @@ class LD19Protocol:
 
 
 # =====================================================================
-# Конфигурация поля и т.д. — без изменений
+# Field configuration, etc. — unchanged
 # =====================================================================
 
 CFG = load_config()
@@ -108,9 +108,9 @@ FRAME_H = int(CFG["vision"]["frame"]["game"]["h"])
 CENTER_X = FRAME_W / 2 + CFG["vision"]["center_offset"][0]
 CENTER_Y = FRAME_H / 2 + CFG["vision"]["center_offset"][1]
 
-# --- Зона поиска: кольцо между rad_sml и rad_big (vision."accessible zone") ---
-# Тюнер сохраняет значения в координатах кадра vision.frame.high,
-# а здесь кадр vision.frame.game, поэтому пересчитываем масштаб.
+# --- Search zone: ring between rad_sml and rad_big (vision."accessible zone") ---
+# The tuner saves values in the vision.frame.high frame coordinates,
+# while here the frame is vision.frame.game, so we rescale accordingly.
 _ZONE = CFG["vision"]["accessible zone"]
 _HIGH = CFG["vision"]["frame"]["high"]
 _ZSX = FRAME_W / float(_HIGH["w"])
@@ -146,13 +146,13 @@ MAX_POINTS_TO_DRAW = int(_LIDAR["max_points_to_draw"])
 LIDAR_MIN_RANGE_MM = float(_LIDAR["min_range_mm"])
 LIDAR_MAX_RANGE_MM = float(_LIDAR["max_range_mm"])
 # === Pose sanity check ===
-# может быть переписан из --own-color
+# can be overridden from --own-color
 OWN_GOAL_COLOR = CFG["team"]["defending_goal"]
 POSE_SANITY_PERIOD_S = float(_SANITY["period_s"])
 POSE_SANITY_FLIP_THRESHOLD_DEG = float(_SANITY["flip_threshold_deg"])
-# ближе этого к воротам не проверяем
+# skip the check when closer to the goal than this
 POSE_SANITY_MIN_DIST_MM = float(_SANITY["min_dist_mm"])
-POSE_SANITY_COOLDOWN_S = float(_SANITY["cooldown_s"])  # после флипа подождать
+POSE_SANITY_COOLDOWN_S = float(_SANITY["cooldown_s"])  # wait this long after a flip
 POSE_SANITY_CAM_MAX_AGE_S = float(_SANITY["camera_max_age_s"])
 
 CAM_STATE_LOCK = threading.Lock()
@@ -173,7 +173,7 @@ MIN_POSE_POINTS = int(_POSE["min_points"])
 KEEP_LAST_SCANS = int(_LIDAR["keep_last_scans"])
 
 # =====================================================================
-# Вспомогательные функции — без изменений
+# Helper functions — unchanged
 # =====================================================================
 
 
@@ -299,7 +299,7 @@ def wall_fit_score(u, v, umin, umax, vmin, vmax, field_w, field_h):
 
 
 # =====================================================================
-# Shared state, navigation, estimate_pose — без изменений
+# Shared state, navigation, estimate_pose — unchanged
 # =====================================================================
 
 
@@ -682,7 +682,7 @@ def compute_drive_command(pose, tx, ty, stop_dx=30.0, stop_dy=30.0):
 
 
 # =====================================================================
-# Serial worker — теперь параметризован протоколом
+# Serial worker — now parameterized by protocol
 # =====================================================================
 
 
@@ -826,7 +826,7 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
 
                                     last_new_ts = now
 
-                                # детектор начала оборота — универсальный
+                                # new-revolution detector — generic
                                 if prev is not None and (prev - s) > 180.0:
                                     if current_scan_pts:
                                         scan_buffer.append(
@@ -863,9 +863,9 @@ def serial_worker(get_port, baud, stop_evt, protocol, timeout=0.02):
 
 
 # =====================================================================
-# Дальше — pico_sender_worker, render_frame, web app, camera_worker —
-# идентичны исходному файлу, без изменений.
-# Они вставлены ниже целиком.
+# Below — pico_sender_worker, render_frame, web app, camera_worker —
+# are identical to the original file, unchanged.
+# They are inserted below in full.
 # =====================================================================
 
 
@@ -1171,7 +1171,7 @@ def stream():
     return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-# === Камера — без изменений ===
+# === Camera — unchanged ===
 
 
 def compute_angle_360(cx, cy, center_x, center_y):
@@ -1470,9 +1470,9 @@ def camera_web_worker(stop_evt):
 
 def pose_sanity_worker(stop_evt):
     """
-    Периодически проверяет, согласована ли лидарная поза с тем, где
-    робот видит свои ворота (они всегда на Y=0). При расхождении > 90°
-    флипает LAST_POSE — это лечит "переворот" поля после столкновения.
+    Periodically checks whether the lidar pose agrees with where the
+    robot sees its own goal (always at Y=0). On a mismatch > 90°,
+    flips LAST_POSE — this fixes a "flipped field" after a collision.
     """
     global LAST_POSE
 
@@ -1485,18 +1485,18 @@ def pose_sanity_worker(stop_evt):
             continue
         last_check = now
 
-        # 1. snapshot позы
+        # 1. snapshot the pose
         _, pose, _, _, _, _ = STATE.snapshot()
         if pose is None:
             continue
 
-        # 2. snapshot камеры
+        # 2. snapshot the camera
         with CAM_STATE_LOCK:
             cam = dict(CAM_STATE)
         if now - cam["ts"] > POSE_SANITY_CAM_MAX_AGE_S:
-            continue  # камера давно не отдавала кадров
+            continue  # camera hasn't produced frames in a while
 
-        # 3. выбрать угол своих ворот
+        # 3. pick the angle to our own goal
         if OWN_GOAL_COLOR == "blue":
             own_angle = cam["blue_angle"]
             own_visible = cam["blue_visible"]
@@ -1507,23 +1507,23 @@ def pose_sanity_worker(stop_evt):
         if not own_visible:
             continue
 
-        # 4. ожидаемый мировой угол на свои ворота (field_w/2, 0)
+        # 4. expected world angle to our own goal (field_w/2, 0)
         dx = FIELD_W / 2.0 - pose["x"]
         dy = 0.0 - pose["y"]
         if math.hypot(dx, dy) < POSE_SANITY_MIN_DIST_MM:
-            continue  # слишком близко, угол шумный
+            continue  # too close, the angle would be noisy
 
-        # та же формула что в compute_drive_command: 0=+Y, 90=+X
+        # same formula as in compute_drive_command: 0=+Y, 90=+X
         world_angle_math = math.degrees(math.atan2(dy, dx))
         expected_world_angle = wrap360(90.0 - world_angle_math)
 
-        # 5. фактический мировой угол от позы + камеры
+        # 5. actual world angle from pose + camera
         robot_yaw = pose.get("robot_yaw", field_yaw_to_robot_yaw(pose["yaw"]))
         actual_world_angle = wrap360(robot_yaw + own_angle)
 
         diff = abs(angle_diff_360(actual_world_angle, expected_world_angle))
 
-        # 6. если расходятся > 90° — лидар перевёрнут, флипаем
+        # 6. if they differ by > 90° — the lidar is flipped, so flip it back
         if diff > POSE_SANITY_FLIP_THRESHOLD_DEG:
             new_pose = dict(pose)
             new_pose["x"] = FIELD_W - pose["x"]
@@ -1543,7 +1543,7 @@ def pose_sanity_worker(stop_evt):
                 f"x={new_pose['x']:.0f} y={new_pose['y']:.0f}"
             )
 
-            # дать позе осесть прежде чем снова проверять
+            # let the pose settle before checking again
             last_check = now + POSE_SANITY_COOLDOWN_S
 
 
@@ -1557,7 +1557,7 @@ def main():
         "--baud",
         type=int,
         default=_LIDAR["baud"],
-        help="по умолчанию: lidar.baud из конфига, иначе 230400 (LD19)",
+        help="default: lidar.baud from config, otherwise 230400 (LD19)",
     )
     ap.add_argument("--host", default=CFG["web"]["host"])
     ap.add_argument("--web-port", type=int, default=CFG["web"]["lidar_port"])
@@ -1565,7 +1565,7 @@ def main():
         "--own-color",
         choices=["blue", "yellow"],
         default=CFG["team"]["defending_goal"],
-        help="Цвет защищаемых ворот (должен совпадать с gk_own_goal_color на Pico)",
+        help="Color of the goal we defend (must match gk_own_goal_color on the Pico)",
     )
     args = ap.parse_args()
 

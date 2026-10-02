@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Простой Bluetooth тест без rfcomm - прямые сокеты.
+Simple Bluetooth test without rfcomm - direct sockets.
 """
 
 import json
@@ -20,7 +20,7 @@ def load_device_config():
         with open(DEVICE_ID_PATH, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Ошибка: {DEVICE_ID_PATH} не найден", file=sys.stderr)
+        print(f"Error: {DEVICE_ID_PATH} not found", file=sys.stderr)
         sys.exit(1)
 
 
@@ -30,17 +30,17 @@ BT_SECURITY_SDP = 0
 
 
 def set_no_security(sock):
-    """Отключить требование шифрования/аутентификации на RFCOMM сокете"""
+    """Disable the encryption/authentication requirement on the RFCOMM socket"""
     try:
         # struct bt_security { uint8_t level; uint8_t key_size; }
         sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("BB", BT_SECURITY_SDP, 0))
     except OSError as e:
-        print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
+        print(f"  (failed to lower security level: {e})", file=sys.stderr)
 
 
 def run_server(my_id, peer_id, channel=1):
-    """Сервер - слушает входящие соединения"""
-    print(f"[{my_id}] Запуск BT сервера на канале {channel}...")
+    """Server - listens for incoming connections"""
+    print(f"[{my_id}] Starting BT server on channel {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -49,32 +49,32 @@ def run_server(my_id, peer_id, channel=1):
     try:
         sock.bind((socket.BDADDR_ANY, channel))
         sock.listen(1)
-        print(f"  Слушаю на канале {channel}...")
+        print(f"  Listening on channel {channel}...")
 
         conn, addr = sock.accept()
-        print(f"  ✓ Подключено: {addr}\n")
+        print(f"  ✓ Connected: {addr}\n")
 
-        # Тест
-        print("  === Тест ===")
+        # Test
+        print("  === Test ===")
         for i in range(5):
             data = conn.recv(1024)
             if data:
-                print(f"  ← Получено: {len(data)} байт")
+                print(f"  ← Received: {len(data)} bytes")
                 conn.send(b"OK")
-                print(f"  → Отправлено: OK")
+                print(f"  → Sent: OK")
             time.sleep(0.1)
 
         conn.close()
-        print("\n  ✓ Тест завершён\n")
+        print("\n  ✓ Test complete\n")
     except Exception as e:
-        print(f"  ✗ Ошибка: {e}", file=sys.stderr)
+        print(f"  ✗ Error: {e}", file=sys.stderr)
     finally:
         sock.close()
 
 
 def run_client(my_id, peer_id, bd_addr, channel=1):
-    """Клиент - подключается к серверу"""
-    print(f"[{my_id}] Подключение к {bd_addr} на канале {channel}...")
+    """Client - connects to the server"""
+    print(f"[{my_id}] Connecting to {bd_addr} on channel {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     set_no_security(sock)
@@ -82,30 +82,30 @@ def run_client(my_id, peer_id, bd_addr, channel=1):
     try:
         sock.bind((socket.BDADDR_ANY, 0))
         sock.connect((bd_addr, channel))
-        print(f"  ✓ Подключено\n")
+        print(f"  ✓ Connected\n")
 
-        # Тест
-        print("  === Тест ===")
+        # Test
+        print("  === Test ===")
         for i in range(5):
             data = f"Test {i}".encode()
             sock.send(data)
-            print(f"  → Отправлено: {data.decode()}")
+            print(f"  → Sent: {data.decode()}")
 
             resp = sock.recv(1024)
             if resp:
-                print(f"  ← Получено: {resp.decode()}")
+                print(f"  ← Received: {resp.decode()}")
 
             time.sleep(0.2)
 
-        print("\n  ✓ Тест завершён\n")
+        print("\n  ✓ Test complete\n")
     except Exception as e:
-        print(f"  ✗ Ошибка: {e}", file=sys.stderr)
+        print(f"  ✗ Error: {e}", file=sys.stderr)
     finally:
         sock.close()
 
 
 def main():
-    parser = ArgumentParser(description="Простой BT тест")
+    parser = ArgumentParser(description="Simple BT test")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--server", type=str, metavar="TARGET")
@@ -125,7 +125,7 @@ def main():
     else:
         bd_addr = config.get("peers", {}).get(args.client, {}).get("bd_addr") or args.force_addr
         if not bd_addr:
-            print(f"Ошибка: адрес для {args.client} не найден", file=sys.stderr)
+            print(f"Error: address for {args.client} not found", file=sys.stderr)
             sys.exit(1)
         run_client(my_id, args.client, bd_addr, args.channel)
 

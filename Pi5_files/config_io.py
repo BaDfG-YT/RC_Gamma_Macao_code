@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Чтение и запись конфига.
+Reading and writing the config.
 
-config/config.defaults.json — общие значения (в git).
-config/config.local.json    — локальные переопределения этого робота (в .gitignore).
-load_config() возвращает defaults, поверх которых глубоко наложен local.
+config/config.defaults.json — shared values (in git).
+config/config.local.json    — local overrides for this robot (in .gitignore).
+load_config() returns defaults with local deep-merged on top.
 """
 
 import json
@@ -44,7 +44,7 @@ def _is_scalar(x):
 
 
 def dumps(obj, indent=0):
-    """JSON с компактными числовыми массивами (HSV в одну строку, таблицы по 16)."""
+    """JSON with compact numeric arrays (HSV on one line, tables in rows of 16)."""
     pad = "  " * indent
     pad2 = "  " * (indent + 1)
     if isinstance(obj, dict):
@@ -76,9 +76,9 @@ def _write(path, data):
 
 def save_detection(target, hsv_lo, hsv_hi, min_area, where):
     """
-    Сохраняет HSV-диапазон и min_area цели (ball / gateB / gateY)
-    в vision.detection.<target>. where: "defaults" или "local".
-    Остальное содержимое файла не трогается.
+    Saves the HSV range and min_area of a target (ball / gateB / gateY)
+    into vision.detection.<target>. where: "defaults" or "local".
+    The rest of the file's contents is left untouched.
     """
     if where not in ("defaults", "local"):
         raise ValueError(where)
@@ -93,7 +93,7 @@ def save_detection(target, hsv_lo, hsv_hi, min_area, where):
 
 
 def save_zone(xc, yc, rad_sml, rad_big, where):
-    """Сохраняет ROI в vision."accessible zone": xc, yc, rad_sml, rad_big."""
+    """Saves the ROI in vision."accessible zone": xc, yc, rad_sml, rad_big."""
     if where not in ("defaults", "local"):
         raise ValueError(where)
     path = DEFAULTS_PATH if where == "defaults" else LOCAL_PATH

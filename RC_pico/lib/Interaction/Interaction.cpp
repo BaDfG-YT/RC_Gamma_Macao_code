@@ -15,7 +15,7 @@ const int OLED_ADDR = 0x3C;
 const int LED_PIN = 6;
 const int NUM_LEDS = 60;
 
-// нельзя называть i2c0 / i2c1 — это макросы из pico-sdk
+// cannot be named i2c0 / i2c1 — these are macros from pico-sdk
 arduino::MbedI2C oledI2C(OLED_SDA, OLED_SCL);
 
 Adafruit_SSD1306 display(OLED_W, OLED_H, &oledI2C, -1);
@@ -44,13 +44,13 @@ void led_set(int index, uint8_t r, uint8_t g, uint8_t b, bool del_old)
 
 void strip_init()
 {
-    // FastLED для WS2812B
+    // FastLED for WS2812B
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
 
-    // Яркость (0..255). Для теста не ставь 255, чтобы не упереться в питание.
+    // Brightness (0..255). For testing don't set 255, to avoid overloading the power supply.
     FastLED.setBrightness(50);
 
-    // Очистить
+    // Clear
     fill_solid(leds, NUM_LEDS, CRGB::Black);
     led_set(0, 255, 0, 0, 0);
     FastLED.show();

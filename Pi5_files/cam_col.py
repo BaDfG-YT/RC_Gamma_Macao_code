@@ -39,7 +39,7 @@ def process_frame(request):
 
 picam2.post_callback = process_frame
 
-picam2.start_preview(Preview.QTGL)  # � ���� ��� ��������
+picam2.start_preview(Preview.QTGL)  # for visual debugging only
 picam2.start()
 
 print("Running... Ctrl+C to stop")

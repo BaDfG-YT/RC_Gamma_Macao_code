@@ -25,7 +25,7 @@ CONFIG = load_config()
 ZONE = CONFIG.get("lidar", {})
 
 # python ld_ssh.py --port /dev/ttyUSB0
-# С автодетектом CP2102:
+# With CP2102 autodetect:
 # python ld_ssh.py --auto
 
 
@@ -40,7 +40,7 @@ class LD19Protocol:
     HDR = b"\x54\x2C"
     NPTS = 12
 
-    # CRC-8 table и init — из config/config.defaults.json (lidar_cfg.py)
+    # CRC-8 table and init — from config/config.defaults.json (lidar_cfg.py)
     CRC_TABLE = lidar_cfg.CRC_TABLE
 
     DEFAULT_BAUD = 230400
@@ -157,7 +157,7 @@ class SharedState:
 
 
 # =====================================================================
-# Serial worker — общий для любого протокола
+# Serial worker — shared across any protocol
 # =====================================================================
 
 def serial_worker(get_port, baud, stop_evt, check_mode, hyst, state, protocol,
@@ -219,9 +219,9 @@ def serial_worker(get_port, baud, stop_evt, check_mode, hyst, state, protocol,
                             st = 2
                             hdr_sec += 1
                         else:
-                            # header[0] совпал, но header[1] нет —
-                            # вернуться в st=0; если этот же байт — header[0],
-                            # перепроверить
+                            # header[0] matched but header[1] didn't —
+                            # go back to st=0; if this same byte is header[0],
+                            # recheck it
                             if b == HDR[0]:
                                 pkt[0] = b
                                 idx = 1
@@ -245,7 +245,7 @@ def serial_worker(get_port, baud, stop_evt, check_mode, hyst, state, protocol,
                                         and (now - last_new_ts) > 0.08):
                                     state.swap_scan()
                                     last_new_ts = now
-                                # запасной wrap-детектор (для LD19 со скачком 360→0 в окне hyst)
+                                # fallback wrap detector (for LD19's 360→0 jump within the hyst window)
                                 elif (prev is not None
                                         and prev > (360.0 - hyst)
                                         and start_a < hyst
@@ -392,7 +392,7 @@ def main():
     ap.add_argument("--pid", type=str)
     ap.add_argument("--port", default="/dev/ttyUSB0")
     ap.add_argument("--baud", type=int, default=None,
-                    help="по умолчанию: 230400")
+                    help="default: 230400")
     ap.add_argument("--w", type=int, default=680)
     ap.add_argument("--h", type=int, default=680)
     ap.add_argument("--scale", type=float, default=0.1)

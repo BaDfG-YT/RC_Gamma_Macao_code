@@ -25,10 +25,10 @@ void procces_cam(char *line);
 float getYawDeg();
 float getYawSignedDeg();
 
-// === Камера ===
+// === Camera ===
 void procces_cam(char *line);
 
-// === Лидар (poses, target, drive command) ===
+// === Lidar (poses, target, drive command) ===
 void procces_lidar(char *line);
 
 // Pose from lidar

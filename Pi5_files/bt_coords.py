@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Двусторонний обмен координатами (x, y, yaw) между двумя распаями по Bluetooth RFCOMM.
+Two-way exchange of coordinates (x, y, yaw) between two Raspberry Pis over Bluetooth RFCOMM.
 
-Каждая сторона ОДНОВРЕМЕННО:
-  - отправляет свои координаты (get_my_coords())
-  - принимает координаты другого робота (см. on_peer_coords())
+Each side SIMULTANEOUSLY:
+  - sends its own coordinates (get_my_coords())
+  - receives the other robot's coordinates (see on_peer_coords())
 
-Соединение одно (RFCOMM стрим), но полнодуплексное: приём и отправка
-работают в параллельных потоках поверх одного сокета.
+There is a single connection (one RFCOMM stream), but it's full-duplex:
+receiving and sending run in parallel threads over the same socket.
 
-Требует предварительной настройки (см. BT_QUICK.txt):
-  - compat-режим bluetoothd
-  - sdptool add --channel=1 SP на устройстве, которое слушает (--listen)
-  - сопряжение устройств (bluetoothctl pair/trust, инициатор - одна сторона)
+Requires prior setup (see BT_QUICK.txt):
+  - compat mode for bluetoothd
+  - sdptool add --channel=1 SP on the device that listens (--listen)
+  - pairing the devices (bluetoothctl pair/trust, one side as initiator)
 
-Использование:
-  # На robotA - слушает входящее соединение (роль "listen" при первом запуске):
+Usage:
+  # On robotA - listens for an incoming connection ("listen" role on first run):
   sudo python3 bt_coords.py --listen --peer robotB
 
-  # На robotB - подключается к robotA (роль "connect"):
+  # On robotB - connects to robotA ("connect" role):
   sudo python3 bt_coords.py --connect robotA
 
-После установления соединения ОБЕ стороны равноправны - каждая и шлёт,
-и принимает координаты одновременно.
+Once the connection is established, BOTH sides are equal peers - each one
+sends and receives coordinates at the same time.
 """
 
 import json
@@ -53,25 +53,25 @@ def load_device_config():
         with open(DEVICE_ID_PATH, encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Ошибка: {DEVICE_ID_PATH} не найден", file=sys.stderr)
+        print(f"Error: {DEVICE_ID_PATH} not found", file=sys.stderr)
         sys.exit(1)
 
 
 def set_no_security(sock):
-    """Отключить требование шифрования/аутентификации на RFCOMM сокете"""
+    """Disable the encryption/authentication requirement on the RFCOMM socket"""
     try:
         sock.setsockopt(SOL_BLUETOOTH, BT_SECURITY, struct.pack("BB", BT_SECURITY_SDP, 0))
     except OSError as e:
-        print(f"  (не удалось снизить security level: {e})", file=sys.stderr)
+        print(f"  (failed to lower security level: {e})", file=sys.stderr)
 
 
 def ensure_sdp_service(channel):
     """
-    Регистрирует Serial Port (SPP) сервис на заданном RFCOMM-канале через sdptool.
+    Registers a Serial Port (SPP) service on the given RFCOMM channel via sdptool.
 
-    SDP-запись живёт в runtime-памяти bluetoothd и пропадает при каждом
-    перезапуске/перезагрузке - поэтому регистрируем её при каждом старте
-    слушающей стороны, а не только один раз вручную.
+    The SDP record lives in bluetoothd's runtime memory and is lost on every
+    restart/reboot - so we register it on every startup of the listening
+    side instead of relying on a one-time manual registration.
     """
     try:
         subprocess.run(
@@ -79,16 +79,16 @@ def ensure_sdp_service(channel):
             capture_output=True, text=True, timeout=5,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
-        print(f"  (не удалось зарегистрировать SDP-сервис: {e})", file=sys.stderr)
+        print(f"  (failed to register SDP service: {e})", file=sys.stderr)
 
 
 def get_my_coords():
     """
-    Возвращает ТЕКУЩИЕ координаты этого робота: (x, y, yaw).
+    Returns the CURRENT coordinates of this robot: (x, y, yaw).
 
-    ЗАГЛУШКА: замените на реальный источник (одометрия, лидар, SLAM и т.п.).
-    Например, читать из общей переменной/очереди, которую обновляет
-    ваш модуль позиционирования.
+    STUB: replace with a real source (odometry, lidar, SLAM, etc.).
+    For example, read from a shared variable/queue that your
+    positioning module updates.
     """
     t = time.time()
     return (1.0 * (t % 10), 2.0, (t * 0.5) % 6.28)
@@ -96,10 +96,10 @@ def get_my_coords():
 
 def on_peer_coords(peer_id, seq, x, y, yaw):
     """
-    Вызывается при получении координат от другого робота.
+    Called when coordinates are received from the other robot.
 
-    ЗАГЛУШКА: замените print() на реальную обработку
-    (обновление модели мира, навигация и т.п.).
+    STUB: replace the print() with real handling
+    (world model update, navigation, etc.).
     """
     print(f"  ← [{peer_id}] #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
 
@@ -113,7 +113,7 @@ def unpack_coords(data):
 
 
 def sender_loop(sock, my_id, rate_hz):
-    """Поток: периодически отправляет свои координаты"""
+    """Thread: periodically sends its own coordinates"""
     global _running
     period = 1.0 / rate_hz
     seq = 0
@@ -124,7 +124,7 @@ def sender_loop(sock, my_id, rate_hz):
             sock.send(pack_coords(seq, x, y, yaw))
             print(f"  → [{my_id}] #{seq}: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}")
         except OSError as e:
-            print(f"  ✗ Ошибка отправки: {e}", file=sys.stderr)
+            print(f"  ✗ Send error: {e}", file=sys.stderr)
             _running = False
             break
 
@@ -133,7 +133,7 @@ def sender_loop(sock, my_id, rate_hz):
 
 
 def receiver_loop(sock, peer_id):
-    """Поток: непрерывно принимает координаты пира"""
+    """Thread: continuously receives the peer's coordinates"""
     global _running
     buf = b""
 
@@ -141,12 +141,12 @@ def receiver_loop(sock, peer_id):
         try:
             data = sock.recv(1024)
         except OSError as e:
-            print(f"  ✗ Ошибка приёма: {e}", file=sys.stderr)
+            print(f"  ✗ Receive error: {e}", file=sys.stderr)
             _running = False
             break
 
         if not data:
-            print(f"\n[{peer_id}] Соединение закрыто пиром")
+            print(f"\n[{peer_id}] Connection closed by peer")
             _running = False
             break
 
@@ -158,7 +158,7 @@ def receiver_loop(sock, peer_id):
 
 
 def run_duplex(sock, my_id, peer_id, rate_hz):
-    """Запускает приём и отправку параллельно поверх установленного соединения"""
+    """Runs receiving and sending in parallel over the established connection"""
     global _running
     _running = True
 
@@ -172,7 +172,7 @@ def run_duplex(sock, my_id, peer_id, rate_hz):
         while _running:
             time.sleep(0.2)
     except KeyboardInterrupt:
-        print(f"\n[{my_id}] Остановлено пользователем")
+        print(f"\n[{my_id}] Stopped by user")
         _running = False
 
     t_send.join(timeout=1)
@@ -181,11 +181,11 @@ def run_duplex(sock, my_id, peer_id, rate_hz):
 
 def run_listen(my_id, peer_id, channel=1, rate_hz=10, retry_delay=2.0):
     """
-    Слушает входящие соединения в бесконечном цикле: после разрыва
-    (перезагрузка/выключение пира, потеря связи) снова ждёт нового
-    подключения, не завершая процесс. Останавливается только по Ctrl+C.
+    Listens for incoming connections in an infinite loop: after a
+    disconnect (peer reboot/shutdown, link loss) it waits for a new
+    connection again instead of exiting. Stops only on Ctrl+C.
     """
-    print(f"[{my_id}] Жду подключения от {peer_id} на канале {channel}...")
+    print(f"[{my_id}] Waiting for connection from {peer_id} on channel {channel}...")
     ensure_sdp_service(channel)
 
     while True:
@@ -198,18 +198,18 @@ def run_listen(my_id, peer_id, channel=1, rate_hz=10, retry_delay=2.0):
             sock.listen(1)
 
             conn, addr = sock.accept()
-            print(f"  ✓ Подключено: {addr}\n")
-            print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
+            print(f"  ✓ Connected: {addr}\n")
+            print(f"  === Two-way coordinate exchange (Ctrl+C to stop) ===")
 
             run_duplex(conn, my_id, peer_id, rate_hz)
             conn.close()
-            print(f"\n[{my_id}] Соединение потеряно, жду повторного подключения...")
+            print(f"\n[{my_id}] Connection lost, waiting for reconnection...")
         except KeyboardInterrupt:
-            print(f"\n[{my_id}] Остановлено пользователем")
+            print(f"\n[{my_id}] Stopped by user")
             sock.close()
             break
         except OSError as e:
-            print(f"  ✗ Ошибка: {e}, повтор через {retry_delay:.0f}с...", file=sys.stderr)
+            print(f"  ✗ Error: {e}, retrying in {retry_delay:.0f}s...", file=sys.stderr)
             time.sleep(retry_delay)
         finally:
             sock.close()
@@ -217,11 +217,11 @@ def run_listen(my_id, peer_id, channel=1, rate_hz=10, retry_delay=2.0):
 
 def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10, retry_delay=2.0):
     """
-    Подключается к слушающей стороне в бесконечном цикле: повторяет
-    попытки, пока слушающая сторона не поднимется, и переподключается
-    заново после разрыва связи. Останавливается только по Ctrl+C.
+    Connects to the listening side in an infinite loop: keeps retrying
+    until the listening side comes up, and reconnects again after a
+    link drop. Stops only on Ctrl+C.
     """
-    print(f"[{my_id}] Подключение к {peer_id} ({bd_addr}) на канале {channel}...")
+    print(f"[{my_id}] Connecting to {peer_id} ({bd_addr}) on channel {channel}...")
 
     while True:
         sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
@@ -230,17 +230,17 @@ def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10, retry_delay=2.0)
         try:
             sock.bind((socket.BDADDR_ANY, 0))
             sock.connect((bd_addr, channel))
-            print(f"  ✓ Подключено\n")
-            print(f"  === Двусторонний обмен координатами (Ctrl+C для остановки) ===")
+            print(f"  ✓ Connected\n")
+            print(f"  === Two-way coordinate exchange (Ctrl+C to stop) ===")
 
             run_duplex(sock, my_id, peer_id, rate_hz)
-            print(f"\n[{my_id}] Соединение потеряно, пробую переподключиться...")
+            print(f"\n[{my_id}] Connection lost, trying to reconnect...")
         except KeyboardInterrupt:
-            print(f"\n[{my_id}] Остановлено пользователем")
+            print(f"\n[{my_id}] Stopped by user")
             sock.close()
             break
         except OSError as e:
-            print(f"  ✗ Не удалось подключиться: {e}, повтор через {retry_delay:.0f}с...", file=sys.stderr)
+            print(f"  ✗ Failed to connect: {e}, retrying in {retry_delay:.0f}s...", file=sys.stderr)
         finally:
             sock.close()
 
@@ -249,27 +249,28 @@ def run_connect(my_id, peer_id, bd_addr, channel=1, rate_hz=10, retry_delay=2.0)
 
 def autodetect_role(my_id, config):
     """
-    Определяет роль (listen/connect) и пира без флагов, на основе конфига.
+    Determines the role (listen/connect) and the peer without flags, based on the config.
 
-    Берёт единственного пира из peers в device_id.local.json. Роль решается
-    детерминированно сравнением ID (меньший по алфавиту - слушает), поэтому
-    на обеих сторонах получается противоположный, но согласованный результат
-    без необходимости вручную задавать кто сервер, а кто клиент.
+    Takes the single peer from `peers` in device_id.local.json. The role is
+    decided deterministically by comparing IDs (the alphabetically smaller
+    one listens), so both sides end up with opposite but consistent results
+    without having to manually specify which one is the server and which is
+    the client.
     """
     peers = config.get("peers", {})
     if not peers:
-        print("Ошибка: в device_id.local.json нет ни одного peer'а", file=sys.stderr)
-        print("  Добавьте через: python3 bt_setup.py --save-peer <id> <bd_addr>", file=sys.stderr)
+        print("Error: no peers in device_id.local.json", file=sys.stderr)
+        print("  Add one via: python3 bt_setup.py --save-peer <id> <bd_addr>", file=sys.stderr)
         sys.exit(1)
 
     if len(peers) > 1:
-        print(f"Предупреждение: в конфиге несколько peers ({list(peers)}), "
-              f"беру первого", file=sys.stderr)
+        print(f"Warning: config has multiple peers ({list(peers)}), "
+              f"using the first one", file=sys.stderr)
 
     peer_id = next(iter(peers))
     bd_addr = peers[peer_id].get("bd_addr")
     if not bd_addr:
-        print(f"Ошибка: у peer '{peer_id}' не задан bd_addr", file=sys.stderr)
+        print(f"Error: peer '{peer_id}' has no bd_addr set", file=sys.stderr)
         sys.exit(1)
 
     is_listener = my_id < peer_id
@@ -277,16 +278,16 @@ def autodetect_role(my_id, config):
 
 
 def main():
-    parser = ArgumentParser(description="Двусторонний обмен координатами (x, y, yaw) по Bluetooth")
+    parser = ArgumentParser(description="Two-way exchange of coordinates (x, y, yaw) over Bluetooth")
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--listen", action="store_true", help="Явно: ждать входящее соединение")
-    group.add_argument("--connect", type=str, metavar="TARGET_ID", help="Явно: подключиться к TARGET_ID")
+    group.add_argument("--listen", action="store_true", help="Explicit: wait for an incoming connection")
+    group.add_argument("--connect", type=str, metavar="TARGET_ID", help="Explicit: connect to TARGET_ID")
 
-    parser.add_argument("--peer", type=str, metavar="TARGET_ID", help="ID пира (для --listen, для логов)")
-    parser.add_argument("--force-addr", type=str, help="Явный Bluetooth адрес (для --connect)")
-    parser.add_argument("--channel", type=int, default=1, help="RFCOMM канал (по умолчанию 1)")
-    parser.add_argument("--rate", type=float, default=10.0, help="Частота отправки своих координат, Гц")
+    parser.add_argument("--peer", type=str, metavar="TARGET_ID", help="Peer ID (for --listen, used in logs)")
+    parser.add_argument("--force-addr", type=str, help="Explicit Bluetooth address (for --connect)")
+    parser.add_argument("--channel", type=int, default=1, help="RFCOMM channel (default 1)")
+    parser.add_argument("--rate", type=float, default=10.0, help="Rate for sending own coordinates, Hz")
 
     args = parser.parse_args()
 
@@ -295,7 +296,7 @@ def main():
     print(f"ID={my_id}\n")
 
     if args.listen or args.connect:
-        # Явный режим (флаги переданы) - старое поведение
+        # Explicit mode (flags given) - the old behavior
         if args.listen:
             peer_id = args.peer or "peer"
             run_listen(my_id, peer_id, args.channel, args.rate)
@@ -303,16 +304,16 @@ def main():
             peer_id = args.connect
             bd_addr = config.get("peers", {}).get(peer_id, {}).get("bd_addr") or args.force_addr
             if not bd_addr:
-                print(f"Ошибка: адрес для {peer_id} не найден в конфиге", file=sys.stderr)
-                print(f"  Используйте --force-addr или bt_setup.py --save-peer", file=sys.stderr)
+                print(f"Error: address for {peer_id} not found in config", file=sys.stderr)
+                print(f"  Use --force-addr or bt_setup.py --save-peer", file=sys.stderr)
                 sys.exit(1)
             run_connect(my_id, peer_id, bd_addr, args.channel, args.rate)
     else:
-        # Без флагов - роль определяется автоматически по конфигу
+        # No flags - role is determined automatically from the config
         is_listener, peer_id, bd_addr = autodetect_role(my_id, config)
-        print(f"Роль определена автоматически: "
-              f"{'слушаю (listener)' if is_listener else 'подключаюсь (connector)'}, "
-              f"пир: {peer_id}\n")
+        print(f"Role auto-detected: "
+              f"{'listening (listener)' if is_listener else 'connecting (connector)'}, "
+              f"peer: {peer_id}\n")
 
         if is_listener:
             run_listen(my_id, peer_id, args.channel, args.rate)

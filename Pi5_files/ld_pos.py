@@ -24,7 +24,7 @@ NPTS = 12
 FIELD_W = 1180.0  # mm
 FIELD_H = 1000.0  # mm
 
-# Если лидар стоит не в центре робота, потом сюда можно добавить смещение
+# If the lidar isn't mounted at the robot's center, an offset can be added here later
 LIDAR_OFFSET_X = 0.0  # mm
 LIDAR_OFFSET_Y = 0.0  # mm
 
@@ -125,7 +125,7 @@ class PoseFilter:
         if pose is None:
             return self.filtered
 
-        # отбрасываем слишком плохие решения
+        # discard solutions that are too bad
         if pose["score"] > self.max_score:
             return self.filtered
 
@@ -133,7 +133,7 @@ class PoseFilter:
         self.hist_y.append(pose["y"])
         self.hist_yaw.append(pose["yaw"])
 
-        # пока мало истории — просто принимаем значение
+        # while there's little history — just accept the value
         med_x = float(np.median(np.array(self.hist_x, dtype=np.float32)))
         med_y = float(np.median(np.array(self.hist_y, dtype=np.float32)))
         med_yaw = float(np.median(np.array(self.hist_yaw, dtype=np.float32))) % 180.0
@@ -149,7 +149,7 @@ class PoseFilter:
             self.filtered = measured
             return self.filtered
 
-        # ограничение скачка по XY
+        # clamp the step in XY
         dx = measured["x"] - self.filtered["x"]
         dy = measured["y"] - self.filtered["y"]
 
@@ -159,7 +159,7 @@ class PoseFilter:
         limited_x = self.filtered["x"] + dx
         limited_y = self.filtered["y"] + dy
 
-        # ограничение скачка по углу
+        # clamp the step in angle
         dyaw = angle_diff_deg(measured["yaw"], self.filtered["yaw"])
         dyaw = clamp(dyaw, -self.max_step_yaw, self.max_step_yaw)
         limited_yaw = self.filtered["yaw"] + dyaw
@@ -168,7 +168,7 @@ class PoseFilter:
         while limited_yaw >= 180.0:
             limited_yaw -= 180.0
 
-        # EMA-сглаживание
+        # EMA smoothing
         fx = self.alpha_xy * limited_x + (1.0 - self.alpha_xy) * self.filtered["x"]
         fy = self.alpha_xy * limited_y + (1.0 - self.alpha_xy) * self.filtered["y"]
         fyaw = angle_blend_deg(self.filtered["yaw"], limited_yaw, self.alpha_yaw)
@@ -213,7 +213,7 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 
     best = None
 
-    # если поза уже была — ищем рядом с ней
+    # if a pose already exists — search near it
     if prev_pose is not None:
         yaw0 = prev_pose["yaw"] % 180.0
         coarse_angles = np.arange(yaw0 - 8.0, yaw0 + 8.1, 1.0, dtype=np.float32)
@@ -298,7 +298,7 @@ def clamp(v, lo, hi):
 
 def angle_diff_deg(a, b):
     """
-    Минимальная разница углов для диапазона [0, 180).
+    Minimal angle difference for the [0, 180) range.
     """
     d = a - b
     while d >= 90.0:
@@ -349,7 +349,7 @@ def serial_worker(get_port, baud, stop_evt, timeout=0.02):
             pkt = bytearray(PKT)
             idx = 0
 
-            # текущий полный оборот
+            # current full revolution
             all_pts = []
 
             while not stop_evt.is_set():
@@ -385,7 +385,7 @@ def serial_worker(get_port, baud, stop_evt, timeout=0.02):
                                 ang, dist = parse_packet_polar(mv)
                                 if ang is not None:
                                     a = np.deg2rad(ang)
-                                    # тут направление уже исправленное
+                                    # direction is already corrected here
                                     xs = dist * np.cos(a)
                                     ys = dist * np.sin(a)
                                     pts = np.column_stack((xs, ys)).astype(np.float32)
@@ -394,12 +394,12 @@ def serial_worker(get_port, baud, stop_evt, timeout=0.02):
                                 s = (int(mv[4]) | (int(mv[5]) << 8)) / 100.0
                                 now = time.time()
 
-                                # новый оборот
+                                # new revolution
                                 if prev is not None and prev > 340.0 and s < 20.0 and (now - last_new_ts) > 0.08:
                                     if all_pts:
                                         full_pts = np.vstack(all_pts)
 
-                                        # умеренное отсечение выбросов по дальности
+                                        # moderate range-based outlier rejection
                                         rr = np.linalg.norm(full_pts, axis=1)
                                         m = (rr > 5.0) & (rr < 2500.0)
                                         full_pts = full_pts[m]
@@ -456,7 +456,7 @@ def render_frame():
 
     pts, pose, port, bytes_sec, hdr_sec = STATE.snapshot()
 
-    # поле
+    # field
     x0, y0, scale = mm_to_px(0, 0, img_w, img_h, FIELD_W, FIELD_H)
     x1, y1, _ = mm_to_px(FIELD_W, FIELD_H, img_w, img_h, FIELD_W, FIELD_H)
 
@@ -467,7 +467,7 @@ def render_frame():
 
     draw.rectangle([left, top, right, bottom], outline=(220, 220, 220), width=3)
 
-    # сетка 10 мм
+    # 10 mm grid
     for x in np.arange(10, FIELD_W, 10):
         px, _, _ = mm_to_px(x, 0, img_w, img_h, FIELD_W, FIELD_H)
         draw.line([(px, top), (px, bottom)], fill=(45, 45, 45), width=1)
@@ -476,7 +476,7 @@ def render_frame():
         _, py, _ = mm_to_px(0, y, img_w, img_h, FIELD_W, FIELD_H)
         draw.line([(left, py), (right, py)], fill=(45, 45, 45), width=1)
 
-    # подписи углов
+    # corner labels
     draw.text((left + 4, bottom + 4), "(0,0)", fill=(180, 180, 180))
     draw.text((right - 80, bottom + 4), f"({FIELD_W:.0f},0)", fill=(180, 180, 180))
     draw.text((left + 4, top - 18), f"(0,{FIELD_H:.0f})", fill=(180, 180, 180))
@@ -486,13 +486,13 @@ def render_frame():
         y = pose["y"]
         yaw = pose["yaw"]
 
-        # ограничим внутри поля для рисования
+        # clamp inside the field for drawing
         x_clamped = min(max(x, 0.0), FIELD_W)
         y_clamped = min(max(y, 0.0), FIELD_H)
 
         px, py, _ = mm_to_px(x_clamped, y_clamped, img_w, img_h, FIELD_W, FIELD_H)
 
-        # робот
+        # robot
         robot_r_mm = 6.0
         robot_r_px = robot_r_mm * scale
 
@@ -503,13 +503,13 @@ def render_frame():
             width=3
         )
 
-        # направление
+        # heading
         a = math.radians(yaw)
         hx = px + math.cos(a) * 14 * scale
         hy = py - math.sin(a) * 14 * scale
         draw.line([(px, py), (hx, hy)], fill=(255, 255, 0), width=3)
 
-        # подпись
+        # label
         txt1 = f"x={x:.1f} mm   y={y:.1f} mm   yaw={yaw:.1f} deg"
         txt2 = f"score={pose['score']:.2f}"
         draw.text((20, 20), txt1, fill=(255, 255, 255))

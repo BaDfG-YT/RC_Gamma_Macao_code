@@ -1,9 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
-// === Красная цель (кегли) с камеры ===
-// dx - отклонение центра масс красного от центра кадра по ширине, px
-//      (минус = левее, плюс = правее)
+// === Red target (pins) from the camera ===
+// dx - deviation of the red centroid from the frame center along the width, px
+//      (negative = left, positive = right)
 extern float g_red_dx;
 extern int g_red_area;
 extern unsigned long g_last_red_ms;

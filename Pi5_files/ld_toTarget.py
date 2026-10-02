@@ -39,12 +39,12 @@ CLEAR_ON_WRAP = False
 MAX_POINTS_FOR_POSE = 2000
 MAX_POINTS_TO_DRAW = 500
 
-# Параметры устойчивого поиска стен
+# Parameters for robust wall detection
 WALL_BIN_MM = 35.0
 WALL_BAND_MM = 45.0
 MIN_WALL_PEAK = 6
 
-# Новый параметр: штраф за перепутанные длинную/короткую стороны
+# New parameter: penalty for swapped long/short sides
 SWAP_PENALTY_GAIN = 30
 
 KEEP_LAST_SCANS = 1
@@ -272,7 +272,7 @@ def estimate_main_angles(points_xy):
     ang = math.degrees(math.atan2(main_vec[1], main_vec[0]))
     ang = wrap180(ang)
 
-    # проверяем и основное направление, и перпендикуляр
+    # check both the main direction and the perpendicular one
     a1 = ang
     a2 = wrap180(ang + 90.0)
 
@@ -309,7 +309,7 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
         u = rp[:, 0]
         v = rp[:, 1]
 
-        # ВАЖНО: separation берём от меньшей стороны, чтобы пики можно было искать одинаково
+        # IMPORTANT: separation is taken from the shorter side, so peaks can be searched for consistently
         uwalls = find_wall_positions(u, bin_size=WALL_BIN_MM, min_sep=min(field_w, field_h) * 0.4)
         vwalls = find_wall_positions(v, bin_size=WALL_BIN_MM, min_sep=min(field_w, field_h) * 0.4)
         if uwalls is None or vwalls is None:
@@ -321,10 +321,10 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
         span_u = umax - umin
         span_v = vmax - vmin
 
-        # Нормальное соответствие сторон
+        # Normal side correspondence
         normal_err = abs(span_u - field_w) + abs(span_v - field_h)
 
-        # Перепутанное соответствие сторон (поворот на 90°)
+        # Swapped side correspondence (90° rotation)
         swapped_err = abs(span_u - field_h) + abs(span_v - field_w)
 
         _, fit_err = wall_fit_score(u, v, umin, umax, vmin, vmax, field_w, field_h)
@@ -428,9 +428,9 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
 
     fit_yaw = best["theta"]
 
-    # Две физически возможные позы для одного и того же прямоугольника:
-    # 1) обычная
-    # 2) развёрнутая на 180°, с зеркальной координатой
+    # Two physically possible poses for the same rectangle:
+    # 1) normal
+    # 2) rotated 180°, with mirrored coordinates
     variants = [
         {
             "x": base_x,
@@ -458,7 +458,7 @@ def estimate_pose(points_xy, field_w=FIELD_W, field_h=FIELD_H, prev_pose=None):
             pos_err = math.hypot(v["x"] - prev_x, v["y"] - prev_y)
             yaw_err = abs(yu - prev_yaw_unwrapped)
 
-            # позиция важнее угла, чтобы не было зеркального скачка
+            # position matters more than angle, to avoid a mirror flip
             variant_score = pos_err + yaw_err * 2.0
 
             if best_variant_score is None or variant_score < best_variant_score:
@@ -533,10 +533,10 @@ def smooth_pose(prev_pose, new_pose, alpha_xy=0.4, alpha_yaw=0.3,
     yaw_unwrapped = prev_yaw_unwrapped + alpha_yaw * dyaw
     yaw = wrap360(yaw_unwrapped)
 
-    # ВАЖНО: сохраняем все debug-поля из new_pose
+    # IMPORTANT: keep all debug fields from new_pose
     out = dict(new_pose)
 
-    # но сглаженные координаты и угол заменяем
+    # but replace the smoothed coordinates and angle
     out["x"] = x
     out["y"] = y
     out["yaw"] = yaw
@@ -559,15 +559,15 @@ def compute_drive_command(pose, tx, ty, stop_dx=30.0, stop_dy=30.0):
     if arrived:
         return 0.0, 1, dist, dx, dy
 
-    # математический угол: 0° вправо, + против часовой
+    # math angle: 0° right, + counterclockwise
     world_angle_math = math.degrees(math.atan2(dy, dx))
 
-    # угол в системе робота/поля: 0° вверх/вперёд, + по часовой
+    # angle in the robot/field system: 0° up/forward, + clockwise
     world_angle_robot = wrap360(90.0 - world_angle_math)
 
     robot_yaw = pose.get("robot_yaw", field_yaw_to_robot_yaw(pose["yaw"]))
 
-    # команда относительно переда робота
+    # command relative to the robot's front
     cmd_angle = angle_diff_360(world_angle_robot, robot_yaw)
 
     return cmd_angle, 0, dist, dx, dy
@@ -765,7 +765,7 @@ def pico_sender_worker(stop_evt):
             time.sleep(0.5)
 
 
-VIEW_EXTRA_MM = 750.0  # запас вокруг поля в мм
+VIEW_EXTRA_MM = 750.0  # margin around the field in mm
 
 def mm_to_px(x_mm, y_mm, img_w, img_h, field_w, field_h, margin=40):
     view_w = field_w + 2 * VIEW_EXTRA_MM
@@ -786,8 +786,8 @@ def mm_to_px(x_mm, y_mm, img_w, img_h, field_w, field_h, margin=40):
 
 def debug_uv_to_field(u, v, pose):
     """
-    Перевод точки из найденной UV-системы стен обратно в координаты поля.
-    В UV-системе:
+    Converts a point from the found wall UV-system back into field coordinates.
+    In the UV-system:
       umin -> x=0
       vmin -> y=0
     """
@@ -807,7 +807,7 @@ def transform_local_points_to_field(pts_local, pose):
     c = math.cos(a)
     s = math.sin(a)
 
-    # согласовано с estimate_pose(), где использован rot2d(points, -yaw)
+    # consistent with estimate_pose(), which uses rot2d(points, -yaw)
     x = pose["x"] + pts_local[:, 0] * c + pts_local[:, 1] * s
     y = pose["y"] - pts_local[:, 0] * s + pts_local[:, 1] * c
 
@@ -831,7 +831,7 @@ def render_frame():
 
     draw.rectangle([left, top, right, bottom], outline=(220, 220, 220), width=3)
 
-        # DEBUG: прямоугольник, который реально нашёл алгоритм по облаку
+        # DEBUG: the rectangle the algorithm actually found from the point cloud
     if pose is not None and all(k in pose for k in ["umin", "umax", "vmin", "vmax"]):
         debug_corners_uv = [
             (pose["umin"], pose["vmin"]),
@@ -847,7 +847,7 @@ def render_frame():
             px, py, _ = mm_to_px(x_f, y_f, img_w, img_h, FIELD_W, FIELD_H)
             debug_corners_px.append((px, py))
 
-        # найденный прямоугольник — красный
+        # found rectangle — red
         draw.line(
             debug_corners_px + [debug_corners_px[0]],
             fill=(255, 0, 0),
@@ -882,7 +882,7 @@ def render_frame():
 
         pts_field = transform_local_points_to_field(pts_draw, pose)
 
-                # DEBUG: вычисляем UV координаты точек относительно найденного yaw
+                # DEBUG: compute UV coordinates of points relative to the found yaw
         rp_dbg = rot2d(pts_draw, -pose.get("fit_yaw", pose["yaw"]))
         u_dbg = rp_dbg[:, 0]
         v_dbg = rp_dbg[:, 1]
@@ -923,7 +923,7 @@ def render_frame():
 
         a = math.radians(robot_yaw)
 
-        # 0° = вверх/перед робота
+        # 0° = up/front of the robot
         hx = px + math.sin(a) * 120 * scale
         hy = py - math.cos(a) * 120 * scale
         draw.line([(px, py), (hx, hy)], fill=(255, 255, 0), width=3)

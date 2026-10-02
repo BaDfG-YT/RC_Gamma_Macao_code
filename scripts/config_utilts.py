@@ -11,9 +11,9 @@ def deep_merge(base: dict, overrides: dict) -> None:
 
 
 def load_config(name: str, folder: pathlib.Path) -> dict:
-    """Читает <name>.defaults.json из folder, накладывает поверх
-    <name>.local.json (если есть). Один и тот же паттерн используется
-    для config.*, device_id.* и любых будущих defaults/local пар."""
+    """Reads <name>.defaults.json from folder, overlays it with
+    <name>.local.json (if present). The same pattern is used
+    for config.*, device_id.* and any future defaults/local pairs."""
     with open(folder / f"{name}.defaults.json") as f:
         config = json.load(f)
 

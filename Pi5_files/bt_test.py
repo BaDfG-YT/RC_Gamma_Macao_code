@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Тест Bluetooth соединения и обмена быстрыми данными между двумя распай.
+Test of a Bluetooth connection and fast data exchange between two Raspberry Pis.
 
-Использует RFCOMM для установки стабильного соединения.
-Требует предварительного сопряжения устройств через bluetoothctl.
+Uses RFCOMM to establish a stable connection.
+Requires the devices to be paired beforehand via bluetoothctl.
 
-Использование:
-  # На устройстве-слушателе (robotA):
+Usage:
+  # On the listener device (robotA):
   python3 bt_test.py --server --target-device robotB --bd-addr AA:BB:CC:DD:EE:FF
 
-  # На устройстве-инициаторе (robotB):
+  # On the initiator device (robotB):
   python3 bt_test.py --client --target-device robotA --bd-addr 11:22:33:44:55:66
 """
 
@@ -27,7 +27,7 @@ DEVICE_ID_PATH = DEVICE_DIR / "device_id.local.json"
 
 
 def load_device_id():
-    """Загружает ID текущего устройства из device_id.local.json"""
+    """Loads the current device's ID from device_id.local.json"""
     try:
         with open(DEVICE_ID_PATH, encoding="utf-8") as f:
             data = json.load(f)
@@ -37,10 +37,10 @@ def load_device_id():
 
 
 def run_server(target_device, channel=1):
-    """Запускает Bluetooth сервер (слушатель) на RFCOMM канале"""
+    """Starts a Bluetooth server (listener) on the RFCOMM channel"""
     my_id = load_device_id()
-    print(f"[{my_id}] Запуск Bluetooth сервера, канал {channel}")
-    print(f"  Ожидание подключения от {target_device}...")
+    print(f"[{my_id}] Starting Bluetooth server, channel {channel}")
+    print(f"  Waiting for connection from {target_device}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.bind((socket.BDADDR_ANY, channel))
@@ -49,65 +49,65 @@ def run_server(target_device, channel=1):
 
     try:
         client_sock, client_addr = sock.accept()
-        print(f"  ✓ Подключено: {client_addr}")
+        print(f"  ✓ Connected: {client_addr}")
 
         test_connection(client_sock, my_id, target_device, is_server=True)
     except KeyboardInterrupt:
-        print("\n  Отмена...")
+        print("\n  Cancelling...")
     except Exception as e:
-        print(f"  ✗ Ошибка сервера: {e}", file=sys.stderr)
+        print(f"  ✗ Server error: {e}", file=sys.stderr)
     finally:
         sock.close()
 
 
 def run_client(target_device, bd_addr, channel=1):
-    """Запускает Bluetooth клиент (инициатор) с подключением к серверу"""
+    """Starts a Bluetooth client (initiator) connecting to the server"""
     my_id = load_device_id()
-    print(f"[{my_id}] Запуск Bluetooth клиента")
-    print(f"  Подключение к {target_device} ({bd_addr}) на канале {channel}...")
+    print(f"[{my_id}] Starting Bluetooth client")
+    print(f"  Connecting to {target_device} ({bd_addr}) on channel {channel}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.settimeout(5)
 
     try:
         sock.connect((bd_addr, channel))
-        print(f"  ✓ Подключено к {target_device}")
+        print(f"  ✓ Connected to {target_device}")
 
         test_connection(sock, my_id, target_device, is_server=False)
     except socket.timeout:
-        print(f"  ✗ Таймаут подключения к {bd_addr}", file=sys.stderr)
+        print(f"  ✗ Connection timeout to {bd_addr}", file=sys.stderr)
     except ConnectionRefusedError:
-        print(f"  ✗ Соединение отклонено. Убедитесь, что сервер запущен.", file=sys.stderr)
+        print(f"  ✗ Connection refused. Make sure the server is running.", file=sys.stderr)
     except Exception as e:
-        print(f"  ✗ Ошибка клиента: {e}", file=sys.stderr)
+        print(f"  ✗ Client error: {e}", file=sys.stderr)
     finally:
         sock.close()
 
 
 def test_connection(sock, my_id, peer_id, is_server):
-    """Тестирует соединение и обмен данными"""
+    """Tests the connection and data exchange"""
     sock.settimeout(2)
 
     try:
-        role = "СЕРВЕР" if is_server else "КЛИЕНТ"
-        print(f"\n[{my_id}] {role} — начало теста...")
+        role = "SERVER" if is_server else "CLIENT"
+        print(f"\n[{my_id}] {role} — starting test...")
 
         if is_server:
             test_server(sock, my_id, peer_id)
         else:
             test_client(sock, my_id, peer_id)
 
-        print(f"[{my_id}] Тест завершён ✓\n")
+        print(f"[{my_id}] Test complete ✓\n")
     except KeyboardInterrupt:
-        print(f"\n[{my_id}] Прерывание пользователем")
+        print(f"\n[{my_id}] Interrupted by user")
     except socket.timeout:
-        print(f"[{my_id}] Таймаут соединения", file=sys.stderr)
+        print(f"[{my_id}] Connection timeout", file=sys.stderr)
     except Exception as e:
-        print(f"[{my_id}] Ошибка в тесте: {e}", file=sys.stderr)
+        print(f"[{my_id}] Error in test: {e}", file=sys.stderr)
 
 
 def test_server(sock, my_id, peer_id):
-    """Сервер: принимает тесты от клиента и отвечает"""
+    """Server: receives tests from the client and responds"""
     packets_received = 0
     bytes_received = 0
 
@@ -115,7 +115,7 @@ def test_server(sock, my_id, peer_id):
         try:
             data = sock.recv(1024)
             if not data:
-                print(f"[{my_id}] Соединение закрыто пиром")
+                print(f"[{my_id}] Connection closed by peer")
                 break
 
             packets_received += 1
@@ -126,7 +126,7 @@ def test_server(sock, my_id, peer_id):
             if msg_type == 1:  # PING
                 if len(data) >= 5:
                     seq = struct.unpack('<I', data[1:5])[0]
-                    print(f"  ← PING #{seq} ({len(data)} байт)")
+                    print(f"  ← PING #{seq} ({len(data)} bytes)")
 
                     response = struct.pack('<BI', 2, seq)  # PONG
                     sock.send(response)
@@ -142,19 +142,19 @@ def test_server(sock, my_id, peer_id):
                     print(f"  → ACK #{seq}")
 
             elif msg_type == 99:  # END
-                print(f"  ← Сигнал конца теста")
+                print(f"  ← End-of-test signal")
                 break
 
         except socket.timeout:
             if packets_received > 0:
-                print(f"  Таймаут. Получено {packets_received} пакетов, {bytes_received} байт")
+                print(f"  Timeout. Received {packets_received} packets, {bytes_received} bytes")
             break
 
 
 def test_client(sock, my_id, peer_id):
-    """Клиент: отправляет разные типы данных и ждёт ответов"""
+    """Client: sends different data types and waits for responses"""
 
-    print("\n  === Тест PING/PONG ===")
+    print("\n  === PING/PONG test ===")
     for i in range(3):
         ping = struct.pack('<BI', 1, i)  # msg_type=1 (PING), seq=i
         sock.send(ping)
@@ -167,7 +167,7 @@ def test_client(sock, my_id, peer_id):
 
         time.sleep(0.1)
 
-    print("\n  === Тест быстрого обмена данными (x, y, yaw) ===")
+    print("\n  === Fast data exchange test (x, y, yaw) ===")
     for i in range(5):
         data_packet = struct.pack('<Ifff', i, 1.5 + i*0.1, 2.0 - i*0.2, 0.5*i)
         msg = struct.pack('<B', 3) + data_packet  # msg_type=3 (FAST_DATA)
@@ -182,7 +182,7 @@ def test_client(sock, my_id, peer_id):
 
         time.sleep(0.05)
 
-    print("\n  === Тест скорости (100 пакетов подряд) ===")
+    print("\n  === Speed test (100 packets in a row) ===")
     start_time = time.time()
     packets_sent = 0
 
@@ -201,42 +201,42 @@ def test_client(sock, my_id, peer_id):
 
     elapsed = time.time() - start_time
     rate = packets_sent / elapsed if elapsed > 0 else 0
-    print(f"  Отправлено: {packets_sent} пакетов за {elapsed:.3f}с ({rate:.1f} пак/сек)")
+    print(f"  Sent: {packets_sent} packets in {elapsed:.3f}s ({rate:.1f} pkt/sec)")
 
-    print("\n  === Завершение ===")
+    print("\n  === Finishing ===")
     end_msg = struct.pack('<B', 99)  # END
     sock.send(end_msg)
-    print(f"  → Сигнал конца")
+    print(f"  → End signal")
 
 
 def main():
-    parser = ArgumentParser(description="Тест Bluetooth соединения между двумя распай")
+    parser = ArgumentParser(description="Test of a Bluetooth connection between two Raspberry Pis")
     parser.add_argument(
         "--server",
         action="store_true",
-        help="Запустить в режиме сервера (слушателя)"
+        help="Run in server (listener) mode"
     )
     parser.add_argument(
         "--client",
         action="store_true",
-        help="Запустить в режиме клиента (инициатора)"
+        help="Run in client (initiator) mode"
     )
     parser.add_argument(
         "--target-device",
         type=str,
         required=True,
-        help="ID целевого устройства (например, robotA)"
+        help="Target device ID (e.g., robotA)"
     )
     parser.add_argument(
         "--bd-addr",
         type=str,
-        help="Bluetooth адрес целевого устройства (например, AA:BB:CC:DD:EE:FF). Требуется для --client"
+        help="Target device's Bluetooth address (e.g., AA:BB:CC:DD:EE:FF). Required for --client"
     )
     parser.add_argument(
         "--channel",
         type=int,
         default=1,
-        help="RFCOMM канал (по умолчанию 1)"
+        help="RFCOMM channel (default 1)"
     )
 
     args = parser.parse_args()
@@ -249,7 +249,7 @@ def main():
         run_server(args.target_device, args.channel)
     elif args.client:
         if not args.bd_addr:
-            print("Ошибка: --bd-addr требуется для режима --client", file=sys.stderr)
+            print("Error: --bd-addr is required for --client mode", file=sys.stderr)
             sys.exit(1)
         run_client(args.target_device, args.bd_addr, args.channel)
 

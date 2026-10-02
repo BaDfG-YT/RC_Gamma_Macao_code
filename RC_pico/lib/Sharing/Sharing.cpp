@@ -38,9 +38,9 @@ bool share_read_line(char *out, size_t out_size)
         {
             rxLine[rxPos++] = c;
         }
-        // если переполнение — просто игнорим лишний символ,
-        // НО НЕ сбрасываем rxPos. Тогда испортится только текущая строка,
-        // а не следующая.
+        // on overflow — just ignore the extra character,
+        // BUT DO NOT reset rxPos. That way only the current line gets corrupted,
+        // not the next one.
     }
 
     return false;

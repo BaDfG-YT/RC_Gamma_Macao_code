@@ -11,31 +11,31 @@ app = Flask(__name__)
 
 CFG = load_config()
 
-# Максимальное разрешение сенсора IMX708 (Camera Module 3): 4608x2592.
-# Съёмка на полном разрешении - лучший вариант для подбора HSV, видно
-# мельчайшие детали границ цвета. Если Pi не тянет плавный стрим на таком
-# размере - опустись до половинного бина 2304x1296 (тоже нативный режим
-# сенсора, читается быстрее) или временно до .
+# Maximum resolution of the IMX708 sensor (Camera Module 3): 4608x2592.
+# Shooting at full resolution is the best option for tuning HSV, since it
+# shows the finest details of color edges. If the Pi can't handle a smooth
+# stream at that size, drop to the half-binned 2304x1296 (also a native
+# sensor mode, reads faster) or temporarily lower still.
 FRAME_W, FRAME_H = int(CFG["vision"]["frame"]["high"]["w"]), int(CFG["vision"]["frame"]["high"]["h"])
 
-# верхняя граница обоих ползунков радиуса
+# upper bound for both radius sliders
 RAD_MAX = max(FRAME_W, FRAME_H)
 
 picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"size": (FRAME_W, FRAME_H)}))
 picam2.start()
 
-# Flask запущен с threaded=True, а камера одна - не даём запросам
-# одновременно дёргать capture_array()
+# Flask runs with threaded=True, but there's only one camera - don't let
+# requests call capture_array() at the same time
 cam_lock = threading.Lock()
 
-# цели, которые можно настраивать (ключи vision.detection в конфиге)
+# targets that can be tuned (keys of vision.detection in the config)
 TARGETS = ["ball", "gateB", "gateY"]
 DEFAULT_TARGET = "ball"
 
 
 def target_values(target):
-    """Стартовые значения ползунков из конфига (defaults + local)."""
+    """Initial slider values from the config (defaults + local)."""
     det = CFG["vision"]["detection"][target]
     (h0, s0, v0), (h1, s1, v1) = det["hsv"]
     zones = CFG["vision"]["accessible zone"]
@@ -43,12 +43,12 @@ def target_values(target):
     return h0, s0, v0, h1, s1, v1, int(det["min_area"]), xc, yc, rad_sml, rad_big
 
 
-# значения при старте - из конфига для цели по умолчанию
+# startup values - from the config for the default target
 H_MIN, S_MIN, V_MIN, H_MAX, S_MAX, V_MAX, MIN_AREA_DEFAULT, ROI_CX, ROI_CY, ROI_R_SML, ROI_R_BIG = target_values(DEFAULT_TARGET)
-MIN_AREA_MAX = 5000  # верхняя граница ползунка
+MIN_AREA_MAX = 5000  # upper bound for the slider
 
-# Качество JPEG для стрима (0-100). 80 -> 92: заметно меньше артефактов
-# сжатия, тоже полезно при подборе HSV по краям объектов.
+# JPEG quality for the stream (0-100). 80 -> 92: noticeably fewer
+# compression artifacts, also helpful when tuning HSV around object edges.
 JPEG_QUALITY = 92
 
 PAGE_TMPL = """
@@ -70,9 +70,9 @@ PAGE_TMPL = """
 <body>
   <h3>HSV tuner</h3>
   <div style="margin-bottom:8px">
-    Цель:
+    Target:
     <select id="target" onchange="location.href='/?target='+this.value">__TARGET_OPTIONS__</select>
-    (значения загружены из конфига)
+    (values loaded from config)
   </div>
   <div class="row">
     <div class="panel">
@@ -82,14 +82,14 @@ PAGE_TMPL = """
         <button onclick="setMode('mask')">mask</button>
       </div>
       <div style="margin-top:8px">
-        <div><b>HSV + min area</b> (для выбранной цели)</div>
-        <button onclick="saveCfg('defaults')">Загрузить данные в дефолтный конфиг</button>
-        <button onclick="saveCfg('local')">Загрузить данные в локальный конфиг</button>
+        <div><b>HSV + min area</b> (for the selected target)</div>
+        <button onclick="saveCfg('defaults')">Save to default config</button>
+        <button onclick="saveCfg('local')">Save to local config</button>
       </div>
       <div style="margin-top:8px">
-        <div><b>ROI</b> (общий для всех целей)</div>
-        <button onclick="saveZone('defaults')">ROI в дефолтный конфиг</button>
-        <button onclick="saveZone('local')">ROI в локальный конфиг</button>
+        <div><b>ROI</b> (shared by all targets)</div>
+        <button onclick="saveZone('defaults')">Save ROI to default config</button>
+        <button onclick="saveZone('local')">Save ROI to local config</button>
       </div>
       <div id="savemsg" style="margin-top:6px"></div>
       <div style="margin-top:8px">
@@ -120,7 +120,7 @@ PAGE_TMPL = """
       <input id="minarea" type="range" min="0" max="__MIN_AREA_MAX__" value="__MIN_AREA_DEFAULT__">
 
       <hr>
-      <b>ROI (круг поиска)</b>
+      <b>ROI (search circle)</b>
 
       <label>Center X: <span id="roicxv"></span></label>
       <input id="roicx" type="range" min="0" max="__FRAME_W__" value="__ROI_CX__">
@@ -163,25 +163,25 @@ async function post(url, okText){
   try {
     const r = await fetch(url, {method: "POST"});
     const j = await r.json();
-    msg.textContent = j.ok ? okText(j) : `Ошибка: ${j.error}`;
-  } catch (e) { msg.textContent = "Ошибка: " + e; }
+    msg.textContent = j.ok ? okText(j) : `Error: ${j.error}`;
+  } catch (e) { msg.textContent = "Error: " + e; }
 }
 
-// HSV + min area для выбранной цели (ROI здесь НЕ отправляется)
+// HSV + min area for the selected target (ROI is NOT sent here)
 function saveCfg(where){
   const q = `target=${document.getElementById("target").value}&where=${where}`
           + `&hmin=${val("hmin")}&smin=${val("smin")}&vmin=${val("vmin")}`
           + `&hmax=${val("hmax")}&smax=${val("smax")}&vmax=${val("vmax")}`
           + `&minarea=${val("minarea")}`;
-  return post("/save?" + q, j => `Сохранено (${where}): ${j.target} -> ${j.path}`);
+  return post("/save?" + q, j => `Saved (${where}): ${j.target} -> ${j.path}`);
 }
 
-// ROI - отдельным запросом, т.к. он общий для всех целей
+// ROI - sent as a separate request since it's shared by all targets
 function saveZone(where){
   const q = `where=${where}&roicx=${val("roicx")}&roicy=${val("roicy")}`
           + `&roirs=${val("roirs")}&roirb=${val("roirb")}`;
   return post("/save_zone?" + q, j =>
-    `ROI сохранён (${where}): cx=${j.xc} cy=${j.yc} r_sml=${j.rad_sml} r_big=${j.rad_big} -> ${j.path}`);
+    `ROI saved (${where}): cx=${j.xc} cy=${j.yc} r_sml=${j.rad_sml} r_big=${j.rad_big} -> ${j.path}`);
 }
 
 IDS.forEach(id=>{
@@ -189,7 +189,7 @@ IDS.forEach(id=>{
 });
 updLabels();
 refresh();
-setInterval(refresh, 200); // обновление 5 fps для тюнинга
+setInterval(refresh, 200); // refresh at 5 fps for tuning
 </script>
 </body>
 </html>
@@ -226,7 +226,7 @@ def parse_int(name, default, lo, hi):
 
 
 def reload_cfg():
-    """Перечитать конфиг после сохранения, чтобы страница показывала свежие значения."""
+    """Reload the config after saving so the page shows fresh values."""
     global CFG
     CFG = load_config()
 
@@ -241,7 +241,7 @@ def index():
 
 @app.route("/save", methods=["POST"])
 def save():
-    """Сохраняет HSV и min_area выбранной цели."""
+    """Saves HSV and min_area of the selected target."""
     target = request.args.get("target", "")
     where = request.args.get("where", "")
     if target not in TARGETS or where not in ("defaults", "local"):
@@ -259,7 +259,7 @@ def save():
 
 @app.route("/save_zone", methods=["POST"])
 def save_zone_route():
-    """Сохраняет ROI (xc, yc, rad_sml, rad_big) в vision.accessible zone."""
+    """Saves ROI (xc, yc, rad_sml, rad_big) in vision.accessible zone."""
     where = request.args.get("where", "")
     if where not in ("defaults", "local"):
         return jsonify(ok=False, error="bad where"), 400
@@ -268,7 +268,7 @@ def save_zone_route():
     rad_sml = parse_int("roirs", ROI_R_SML, 1, RAD_MAX)
     rad_big = parse_int("roirb", ROI_R_BIG, 1, RAD_MAX)
     if rad_sml > rad_big:
-        return jsonify(ok=False, error=f"rad_sml ({rad_sml}) больше rad_big ({rad_big})"), 400
+        return jsonify(ok=False, error=f"rad_sml ({rad_sml}) is greater than rad_big ({rad_big})"), 400
     try:
         path = save_zone(xc, yc, rad_sml, rad_big, where)
         reload_cfg()
@@ -302,12 +302,12 @@ def video():
 
     color_mask = cv2.inRange(hsv, np.array([hmin, smin, vmin]), np.array([hmax, smax, vmax]))
 
-    # кольцевая маска ROI: белое кольцо между rad_sml (внутренний радиус)
-    # и rad_big (внешний) на чёрном фоне того же размера, что и кадр;
-    # цвет ищем только там, где обе маски пересекаются
+    # ring-shaped ROI mask: a white ring between rad_sml (inner radius)
+    # and rad_big (outer) on a black background the same size as the frame;
+    # color is only searched for where both masks overlap
     roi_mask = np.zeros(color_mask.shape, dtype=np.uint8)
-    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rb, 255, -1)  # большой круг заливаем
-    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rs, 0, -1)    # малый вырезаем
+    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rb, 255, -1)  # fill the big circle
+    cv2.circle(roi_mask, (roi_cx, roi_cy), roi_rs, 0, -1)    # cut out the small one
 
     mask = cv2.bitwise_and(color_mask, roi_mask)
 
@@ -329,7 +329,7 @@ def video():
                             (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         out = bgr
 
-    # рамки ROI - всегда видны: малый круг (голубой) и большой (пурпурный)
+    # ROI outlines - always visible: small circle (cyan) and big (magenta)
     cv2.circle(out, (roi_cx, roi_cy), roi_rs, (255, 255, 0), 3)
     cv2.circle(out, (roi_cx, roi_cy), roi_rb, (255, 0, 255), 3)
 

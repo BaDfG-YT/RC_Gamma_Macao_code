@@ -5,19 +5,19 @@
 
 extern EncEvent g_menu_enc_event;
 
-// тип callback-функции для пункта меню
+// callback function type for a menu item
 typedef void (*MenuAction)();
 
-// тип пункта
+// item type
 enum MenuItemType
 {
-    ITEM_FOLDER,        // содержит подпункты
-    ITEM_ACTION_ONCE,   // выполнить и вернуться
-    ITEM_ACTION_LOOP    // выполнять в цикле, выход по кнопке
+    ITEM_FOLDER,        // contains sub-items
+    ITEM_ACTION_ONCE,   // execute and return
+    ITEM_ACTION_LOOP    // run in a loop, exit by button
 };
 
-// В MenuItem — новое поле в конец структуры (старые литералы не сломаются,
-// у поля дефолт nullptr):
+// In MenuItem — add new fields at the end of the struct (old initializer
+// literals won't break since the field defaults to nullptr):
 struct MenuItem
 {
     const char *title;
@@ -27,21 +27,21 @@ struct MenuItem
     void (*action)();
     void (*on_enter)();
     void (*on_exit)();
-    void *data = nullptr;   // доп. данные для generic-пунктов (ChoiceSetter* и т.п.)
+    void *data = nullptr;   // extra data for generic items (ChoiceSetter* etc.)
 };
 
-// Выбор одного значения из фиксированного набора вариантов
+// Choosing one value from a fixed set of options
 struct ChoiceSetter
 {
-    const char *title;    // заголовок на экране
-    int *target;          // куда сохраняется выбранное значение
-    const int *values;    // варианты
-    int count;             // сколько вариантов
-    int index;              // текущий индекс (внутреннее состояние)
+    const char *title;    // title shown on screen
+    int *target;          // where the chosen value is stored
+    const int *values;    // options
+    int count;             // how many options
+    int index;              // current index (internal state)
 };
 
-// Generic-обработчики для пункта меню-выбора.
-// Пункт создаётся так:
+// Generic handlers for a choice-menu item.
+// An item is created like this:
 //   {"Turn", ITEM_ACTION_LOOP, nullptr, 0, choice_loop, choice_enter, choice_exit, &cs_myvar}
 void choice_enter();
 void choice_loop();
@@ -51,7 +51,7 @@ int choice_select(const char *title, const int *values, int count, int default_i
 void menu_init(const MenuItem *root, int root_count);
 void menu_loop();
 
-// Блокирующий экран выбора целого числа с заданным шагом и границами.
-// Крутишь энкодер - число растёт/падает на step, нажал кнопку - подтвердил и вышел.
-// Возвращает выбранное значение.
+// Blocking screen for choosing an integer with a given step and bounds.
+// Turn the encoder - the number increases/decreases by step, press the button - confirm and exit.
+// Returns the chosen value.
 int number_select(const char *title, int v_min, int v_max, int step, int default_value);

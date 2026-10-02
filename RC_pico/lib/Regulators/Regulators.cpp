@@ -20,7 +20,7 @@ void pd_reset(PD &s)
 }
 
 // =============================================================
-// Медианный фильтр
+// Median filter
 // =============================================================
 
 void median_init(MedianFilter &f, int window)
@@ -38,12 +38,12 @@ int median_push(MedianFilter &f, int value)
     f.idx = (f.idx + 1) % f.win;
     if (f.filled < f.win) f.filled++;
 
-    // копируем и сортируем
+    // copy and sort
     int tmp[FILTER_MAX_WIN];
     for (int i = 0; i < f.filled; i++)
         tmp[i] = f.buf[i];
 
-    // вставка
+    // insertion
     for (int i = 1; i < f.filled; i++)
     {
         int key = tmp[i];
@@ -60,7 +60,7 @@ int median_push(MedianFilter &f, int value)
 }
 
 // =============================================================
-// Среднее по окну
+// Windowed average
 // =============================================================
 
 void mean_init(MeanFilter &f, int window)

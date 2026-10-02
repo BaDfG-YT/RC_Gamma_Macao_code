@@ -3,7 +3,7 @@
 
 static const int   PHOTO_TRANS_PIN  = 29;
 static const int   BREAKER_THRESHOLD = 600;
-static const float BREAKER_LPF_ALPHA = 0.2f;   // 0..1: меньше = сильнее сглаживание
+static const float BREAKER_LPF_ALPHA = 0.2f;   // 0..1: lower = stronger smoothing
 
 static LPF break_filter;
 static bool breaker_initialized = false;
@@ -39,8 +39,8 @@ bool ball_hole()
     static bool state = false;
     float filt = lpf_push(break_filter, analogRead(PHOTO_TRANS_PIN));
 
-    const float TH_ON  = 700.0f;   // выше — мяч есть
-    const float TH_OFF = 400.0f;   // ниже — мяча нет
+    const float TH_ON  = 700.0f;   // above — ball present
+    const float TH_OFF = 400.0f;   // below — no ball
 
     if (!state && filt >= TH_ON)
         state = true;

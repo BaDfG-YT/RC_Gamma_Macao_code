@@ -2,21 +2,21 @@
 #include <Interaction.h>
 #include <Encoder.h>
 
-// стек навигации — какие папки открыты
+// navigation stack — which folders are open
 static const int MAX_DEPTH = 4;
 
 struct NavLevel
 {
     const MenuItem *items;
     int count;
-    int cursor; // подсвеченный пункт
-    int scroll; // верхний видимый пункт
+    int cursor; // highlighted item
+    int scroll; // topmost visible item
 };
 
 static NavLevel nav_stack[MAX_DEPTH];
 static int nav_depth = 0;
 
-// режим: листаем меню или выполняем LOOP-действие
+// mode: browsing the menu or running a LOOP action
 static enum {
     MODE_BROWSE,
     MODE_RUNNING_LOOP
@@ -24,8 +24,8 @@ static enum {
 
 static const MenuItem *running_item = nullptr;
 
-// сколько пунктов помещается на экран OLED 128x64
-// при шрифте размером 1 строка ~10px, заголовок 12px → 5 видимых строк
+// how many items fit on a 128x64 OLED screen
+// at font size 1 a line is ~10px, header 12px → 5 visible lines
 static const int VISIBLE_ROWS = 5;
 static const int ROW_HEIGHT = 10;
 
@@ -52,8 +52,8 @@ static void draw_menu()
 
     NavLevel &lvl = current_level();
 
-    // заголовок: путь
-    // покажем имя текущей папки или "Main" для корня
+    // header: path
+    // show the current folder's name, or "Main" for the root
     char header[24];
     if (nav_depth == 1)
     {
@@ -66,8 +66,8 @@ static void draw_menu()
     }
     oled_text(0, 0, header, 1);
 
-    // разделитель
-    // (рисовать линию можно средствами Adafruit_GFX, но для простоты — обходимся без неё)
+    // separator
+    // (a line could be drawn with Adafruit_GFX, but for simplicity we skip it)
 
     for (int row = 0; row < VISIBLE_ROWS; row++)
     {
@@ -78,7 +78,7 @@ static void draw_menu()
         int y = 12 + row * ROW_HEIGHT;
         bool selected = (idx == lvl.cursor);
 
-        // префикс: ">" для выделенного, " " для остальных
+        // prefix: ">" for the selected item, " " for the rest
         char line[24];
         snprintf(line, sizeof(line), "%c%s", selected ? '>' : ' ', lvl.items[idx].title);
 
@@ -135,7 +135,7 @@ static void enter_item()
     case ITEM_ACTION_ONCE:
         if (it->action)
             it->action();
-        // остаёмся в том же месте меню
+        // stay at the same place in the menu
         draw_menu();
         break;
 
@@ -174,7 +174,7 @@ void menu_loop()
 
     if (mode == MODE_RUNNING_LOOP)
     {
-        // прокидываем событие энкодера в action через глобал
+        // forward the encoder event into action via the global
         g_menu_enc_event = ev;
         led_blink(1, 255);
         led_show();
@@ -203,7 +203,7 @@ void menu_loop()
             clamp_scroll(lvl);
             draw_menu();
         }
-        // на последнем пункте — ничего (можно зациклить, см. ниже)
+        // on the last item — do nothing (could wrap around, see below)
         break;
 
     case ENC_LEFT:
@@ -215,14 +215,14 @@ void menu_loop()
         }
         else
         {
-            // на первом пункте → выход на уровень выше
+            // on the first item → go up one level
             go_back();
         }
         break;
 
     case ENC_LEFT_HOLD:
     case ENC_RIGHT_HOLD:
-        // оставим зажатой кнопкой как дополнительный вариант выхода
+        // keep button-hold as an additional way to exit
         go_back();
         break;
     case ENC_BUTTON_RELEASED:
@@ -248,7 +248,7 @@ void choice_enter()
     ChoiceSetter *cs = (ChoiceSetter *)running_item->data;
     if (!cs) return;
 
-    // синхронизируем позицию курсора с текущим значением переменной
+    // sync the cursor position with the variable's current value
     for (int i = 0; i < cs->count; i++)
         if (cs->values[i] == *cs->target)
         {
@@ -279,7 +279,7 @@ void choice_loop()
 
     if (changed)
     {
-        *cs->target = cs->values[cs->index];   // сохраняем сразу, живьём
+        *cs->target = cs->values[cs->index];   // save immediately, live
         choice_draw(cs);
     }
 
@@ -289,7 +289,7 @@ void choice_loop()
 
 void choice_exit()
 {
-    // значение уже лежит в *target - здесь делать нечего
+    // the value is already stored in *target - nothing to do here
 }
 
 int choice_select(const char *title, const int *values, int count, int default_index)
@@ -324,7 +324,7 @@ int choice_select(const char *title, const int *values, int count, int default_i
         }
         else if (ev == ENC_BUTTON_RELEASED)
         {
-            break;   // подтвердили выбор
+            break;   // choice confirmed
         }
 
         delay(10);
@@ -366,7 +366,7 @@ int number_select(const char *title, int v_min, int v_max, int step, int default
         }
         else if (ev == ENC_BUTTON_RELEASED)
         {
-            break; // подтвердили выбор
+            break; // choice confirmed
         }
 
         delay(10);

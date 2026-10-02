@@ -17,7 +17,7 @@ static constexpr uint8_t PIN_CAN_SCK = 10;
 static constexpr uint8_t PIN_CAN_MOSI = 11;
 static constexpr uint8_t PIN_CAN_MISO = 12;
 static constexpr uint8_t PIN_CAN_CS = 9;
-static constexpr uint8_t PIN_CAN_INT = 8; // опционально, для приёма по прерыванию
+static constexpr uint8_t PIN_CAN_INT = 8; // optional, for interrupt-driven reception
 
 // CAN params
 static constexpr uint8_t MCP2515_CLOCK = MCP_16MHZ;
@@ -32,7 +32,7 @@ static constexpr uint16_t CAN_ID_BASE = 0x140;
 // -------------------- CAN instance --------------------
 MCP_CAN CAN0(&SPI1, PIN_CAN_CS);
 
-// -------------------- Направления --------------------
+// -------------------- Directions --------------------
 static constexpr int32_t DIR_A = -1;
 static constexpr int32_t DIR_B = +1;
 
@@ -96,7 +96,7 @@ void motor_init()
     delay(10);
 }
 
-// ==================== Энкодеры MF4015 v2 (0x90) ====================
+// ==================== MF4015 v2 encoders (0x90) ====================
 
 static bool waitReply(uint8_t id, uint8_t cmd, uint8_t out[8],
                       unsigned long timeout_ms = 10)
@@ -150,7 +150,7 @@ bool readEncoders(EncoderState &encA, EncoderState &encB)
     return encA.valid && encB.valid;
 }
 
-// ==================== Многооборотный угол (0x92) ====================
+// ==================== Multi-turn angle (0x92) ====================
 
 static bool readMultiTurnRaw(uint8_t id, int64_t &centideg)
 {
@@ -227,7 +227,7 @@ static void requestStatus(uint8_t id)
     sendFrame(canId, data);
 }
 
-// ==================== Движение ====================
+// ==================== Movement ====================
 
 void move(int32_t spA, int32_t spB)
 {
@@ -237,8 +237,8 @@ void move(int32_t spA, int32_t spB)
 
 void obsession(int32_t sp) { move(sp, -sp); }
 
-// Отключение двигателя. После 0x80 силовой выход отключается,
-// вал можно свободно вращать.
+// Turn off the motor. After 0x80 the power output is disabled,
+// the shaft can spin freely.
 static void motorOff(uint8_t id)
 {
     uint8_t data[8] = {0};
@@ -246,10 +246,10 @@ static void motorOff(uint8_t id)
     sendFrame(CAN_ID_BASE + id, data);
 }
 
-// Удержание заданного многооборотного угла (0xA4).
-// В отличие от 0xA5 (угол по модулю одного оборота + направление),
-// здесь угол абсолютный - направление никогда не выбирается,
-// поэтому нет риска уехать не в ту сторону при блокировке.
+// Hold a given multi-turn angle (0xA4).
+// Unlike 0xA5 (single-turn angle modulo + direction),
+// here the angle is absolute - direction is never chosen,
+// so there's no risk of moving the wrong way while locking.
 static void holdPositionRaw(uint8_t id, int32_t angleCentideg, uint16_t maxSpeedDps = 15)
 {
     uint8_t data[8] = {0};
@@ -266,7 +266,7 @@ static void holdPositionRaw(uint8_t id, int32_t angleCentideg, uint16_t maxSpeed
     sendFrame(CAN_ID_BASE + id, data);
 }
 
-// Блокировка одного мотора на его текущем (многооборотном) угле.
+// Lock one motor at its current (multi-turn) angle.
 static bool lockAtCurrent(uint8_t id)
 {
     int64_t ang = 0;
@@ -277,9 +277,9 @@ static bool lockAtCurrent(uint8_t id)
     return true;
 }
 
-// Остановка моторов.
-// hold = true:  моторы блокируются на текущей позиции (0xA4).
-// hold = false: моторы отключаются и могут свободно вращаться.
+// Stop the motors.
+// hold = true:  motors lock at their current position (0xA4).
+// hold = false: motors turn off and can spin freely.
 void stop(bool hold)
 {
     move(0, 0);
@@ -298,20 +298,20 @@ void stop(bool hold)
     lockAtCurrent(MOTOR_ID_B);
 }
 
-// ==================== Движение по энкодерам ====================
+// ==================== Movement by encoders ====================
 
-// -------------------- Профиль скорости --------------------
+// -------------------- Speed profile --------------------
 static constexpr int V_MIN = 6;
 static constexpr float ACCEL_DIST_DEG = 950.0f;
 static constexpr float DECEL_DIST_DEG = 950.0f;
 
-// -------------------- Удержание прямой (PID) --------------------
+// -------------------- Straight-line hold (PID) --------------------
 static PID pid_straight;
 float straight_p = 0.15f;
 float straight_i = 0.0f;
 float straight_d = 0.5f;
 
-// -------------------- Геометрия робота --------------------
+// -------------------- Robot geometry --------------------
 static constexpr float WHEEL_D_MM = 45.2f;
 static constexpr float TRACK_MM = 134.5f;
 
@@ -356,7 +356,7 @@ bool move_deg(float deg, int speed, unsigned long timeout_ms, MoveProgressCb pro
         int v = (int)min(min(v_acc, v_dec), (float)speed);
         v = max(v, V_MIN);
 
-        // --- PID-удержание прямой: e = насколько A обогнал B ---
+        // --- PID straight-line hold: e = how much A is ahead of B ---
         float e = pa - pb;
         int u = lround(pid_reg(pid_straight, e, straight_p, straight_i, straight_d));
         u = constrain(u, -v / 2, v / 2);
@@ -383,9 +383,9 @@ bool move_mm(float mm, int speed, unsigned long timeout_ms, MoveProgressCb progr
     return move_deg(mm / (WHEEL_D_MM * PI) * 360, speed, timeout_ms, progress);
 }
 
-// Движение на mm миллиметров с PID-подруливанием по внешней ошибке.
-// error_src вызывается каждый цикл (например, отклонение красного с камеры).
-// Дистанция и профиль скорости - по энкодерам, курс - по PID от ошибки.
+// Move mm millimeters with PID steering correction from an external error.
+// error_src is called every cycle (e.g. the red-target deviation from the camera).
+// Distance and speed profile come from encoders, heading comes from PID on the error.
 bool move_mm_pid(float mm, ErrorCb error_src, float kp, float ki, float kd, int speed,
                  unsigned long timeout_ms, MoveProgressCb progress)
 {
@@ -393,7 +393,7 @@ bool move_mm_pid(float mm, ErrorCb error_src, float kp, float ki, float kd, int 
     if (!readAngles(a0, b0))
         return false;
 
-    static PID pid_ext; // свой PID, чтобы не мешаться с pid_straight
+    static PID pid_ext; // dedicated PID so it doesn't interfere with pid_straight
     pid_reset(pid_ext);
 
     int dir = (mm >= 0) ? 1 : -1;
@@ -430,7 +430,7 @@ bool move_mm_pid(float mm, ErrorCb error_src, float kp, float ki, float kd, int 
         int v = (int)min(min(v_acc, v_dec), (float)speed);
         v = max(v, V_MIN);
 
-        // --- PID по внешней ошибке ---
+        // --- PID on external error ---
         float e = error_src ? error_src() : 0.0f;
         int u = lround(pid_reg(pid_ext, e, kp, ki, kd));
         u = constrain(u, -v / 2, v / 2);
@@ -452,8 +452,8 @@ bool move_mm_pid(float mm, ErrorCb error_src, float kp, float ki, float kd, int 
     return ok;
 }
 
-// Поворот на месте на angle градусов (angle > 0 - по часовой, < 0 - против).
-// Профиль скорости и PID-выравнивание - как в move_deg.
+// Turn in place by angle degrees (angle > 0 - clockwise, < 0 - counterclockwise).
+// Speed profile and PID alignment - same as in move_deg.
 bool turn_deg_tank(float angle, int speed, unsigned long timeout_ms, MoveProgressCb progress)
 {
     float a0, b0;
@@ -496,7 +496,7 @@ bool turn_deg_tank(float angle, int speed, unsigned long timeout_ms, MoveProgres
         int v = (int)min(min(v_acc, v_dec), (float)speed);
         v = max(v, V_MIN);
 
-        // --- PID-выравнивание колёс ---
+        // --- PID wheel alignment ---
         float e = pa - pb;
         int u = lround(pid_reg(pid_straight, e, straight_p, straight_i, straight_d));
         u = constrain(u, -v / 2, v / 2);
@@ -518,11 +518,11 @@ bool turn_deg_tank(float angle, int speed, unsigned long timeout_ms, MoveProgres
     return ok;
 }
 
-// Поворот вокруг одного колеса (pivot turn).
-// angle > 0: корпус поворачивает направо (по часовой), angle < 0 - налево.
-// dir = true:  едем вперёд  (направо -> едет левое A)
-// dir = false: едем назад   (направо -> едет правое B, задним ходом)
-// Стоящее колесо держит серва (скорость 0).
+// Turn around one wheel (pivot turn).
+// angle > 0: the body turns right (clockwise), angle < 0 - left.
+// dir = true:  driving forward  (right -> left wheel A drives)
+// dir = false: driving backward (right -> right wheel B drives, in reverse)
+// The stationary wheel holds its position (speed 0).
 bool turn_deg_pivot(float angle, int speed, bool dir,
                     unsigned long timeout_ms, MoveProgressCb progress)
 {

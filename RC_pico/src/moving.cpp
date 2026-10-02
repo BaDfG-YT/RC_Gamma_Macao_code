@@ -1,18 +1,18 @@
 #include <Arduino.h>
 #include <MotorDriver.h>
 
-// Простой тест запуска мотора MF4015 v2 (Waveshare RP2350-CAN)
-// Крутит мотор A: 3 c вперёд -> 1 c стоп -> 3 c назад -> 1 c стоп
+// Simple start test for the MF4015 v2 motor (Waveshare RP2350-CAN)
+// Spins motor A: 3 s forward -> 1 s stop -> 3 s reverse -> 1 s stop
 
-int speed = 30; // старт на малой скорости, максимум 100
+int speed = 30; // start at low speed, max is 100
 
 void setup()
 {
   Serial.begin(115200);
-  delay(2000); // время открыть Serial Monitor
+  delay(2000); // time to open the Serial Monitor
 
   Serial.println("Motor test: init CAN...");
-  motor_init(); // если XL2515 не ответит - зависнет внутри, см. комментарии в драйвере
+  motor_init(); // if XL2515 doesn't respond, it will hang inside - see comments in the driver
   Serial.println("CAN OK, motors enabled");
 
   for (int i = 0; i < 5; i++)

@@ -10,16 +10,16 @@ void obsession(int32_t sp);
 struct EncoderState
 {
     bool valid;
-    uint16_t pos;     // позиция с учётом offset, 0..16383
-    uint16_t raw;     // сырая позиция
-    uint16_t offset;  // нулевое смещение
+    uint16_t pos;     // position including offset, 0..16383
+    uint16_t raw;     // raw position
+    uint16_t offset;  // zero offset
 };
 
 bool readEncoders(EncoderState &encA, EncoderState &encB);
 bool readAngles(float &angA_deg, float &angB_deg);
 bool readTurns(float &turnsA, float &turnsB);
 
-// Колбэк прогресса поездки: пройдено A, пройдено B, цель (градусы)
+// Trip progress callback: distance traveled by A, by B, target (degrees)
 typedef void (*MoveProgressCb)(float pa, float pb, float target);
 
 bool move_deg(float deg, int speed, unsigned long timeout_ms = 25000,
@@ -28,8 +28,8 @@ bool move_deg(float deg, int speed, unsigned long timeout_ms = 25000,
 bool move_mm(float mm, int speed, unsigned long timeout_ms = 25000,
               MoveProgressCb progress = nullptr);
 
-// Источник ошибки для подруливания: возвращает текущую ошибку курса
-// (>0 - робот должен довернуть в одну сторону, <0 - в другую)
+// Error source for steering correction: returns the current heading error
+// (>0 - the robot should turn one way, <0 - the other)
 typedef float (*ErrorCb)();
 
 bool move_mm_pid(float mm, ErrorCb error_src, float kp, float ki, float kd, int speed,
