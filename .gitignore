@@ -32,8 +32,8 @@ desktop.ini
 .vscode/c_cpp_properties.json
 
 # идентефикационный и конф файл
-config.local.json
-device_id.local.json
+config/config.local.json
+device/device_id.local.json
 
 # архивы ini
 toolchain-cache/
