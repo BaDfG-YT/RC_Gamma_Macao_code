@@ -54,7 +54,7 @@ def run_server(my_config, target_device, channel=1):
     print(f"  Ожидание подключения от {target_device}...")
 
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    sock.bind(("", channel))
+    sock.bind((socket.BDADDR_ANY, channel))
     sock.listen(1)
     sock.settimeout(None)
 
