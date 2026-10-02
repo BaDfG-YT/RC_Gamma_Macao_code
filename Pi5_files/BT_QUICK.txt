@@ -1,144 +1,243 @@
 ================================================================================
-  BLUETOOTH ТЕСТ МЕЖДУ ДВУМЯ РАСПАЯМИ — ШПАРГАЛКА
+  BLUETOOTH ТЕСТ МЕЖДУ ДВУМЯ РАСПАЯМИ — ШПАРГАЛКА (РАБОЧИЙ РЕЦЕПТ)
 ================================================================================
 
-1️⃣  ПЕРВЫЙ РАЗ: НАСТРОЙКА
+Проверено на двух Raspberry Pi 5 (Bookworm). Рабочий скрипт — bt_simple_test.py.
+Остальные bt_test*.py — черновики, не использовать (см. раздел 8).
+
+
+1️⃣  НАСТРОЙКА СИСТЕМЫ (один раз на КАЖДОЙ Pi)
 ──────────────────────────────────────────────────────────────────────────────
 
-На СЕРВЕРЕ (например robotA):
-  $ python3 bt_setup.py --scan              # Найти другой Pi
-  $ python3 bt_setup.py --pair AA:BB:CC:DD:EE:FF  # Сопрячь robotB
-  $ python3 bt_setup.py --save-peer robotB AA:BB:CC:DD:EE:FF
+a) Включить и запустить Bluetooth:
+   $ sudo systemctl enable bluetooth
+   $ sudo systemctl start bluetooth
+   $ sudo hciconfig hci0 up
+   $ sudo hciconfig hci0 piscan
 
-На КЛИЕНТЕ (например robotB):
-  $ python3 bt_setup.py --scan              # Найти другой Pi
-  $ python3 bt_setup.py --pair 11:22:33:44:55:66  # Сопрячь robotA
-  $ python3 bt_setup.py --save-peer robotA 11:22:33:44:55:66
+b) Включить compat-режим bluetoothd (НУЖНО для sdptool/RFCOMM):
+   $ sudo mkdir -p /etc/systemd/system/bluetooth.service.d
+   $ sudo tee /etc/systemd/system/bluetooth.service.d/override.conf << 'EOF'
+   [Service]
+   ExecStart=
+   ExecStart=/usr/libexec/bluetooth/bluetoothd --compat
+   EOF
+   $ sudo systemctl daemon-reload
+   $ sudo systemctl restart bluetooth
+   $ sudo hciconfig hci0 up
+   $ sudo hciconfig hci0 piscan
+
+c) Зарегистрировать Serial Port сервис (SPP) на канале 1:
+   $ sudo sdptool add --channel=1 SP
+
+   Проверка:
+   $ sudo sdptool browse local
+   # Должен появиться "Serial Port" / Channel: 1
+
+Без пункта (b) RFCOMM соединение падает с "Connection refused" даже если
+Bluetooth включён и устройства видят друг друга.
 
 
-2️⃣  БЫСТРЫЙ СТАРТ (если адреса сохранены в device_id.local.json)
+2️⃣  СОПРЯЖЕНИЕ (ОДИН РАЗ, после настройки системы)
 ──────────────────────────────────────────────────────────────────────────────
 
-Интерактивное меню:
-  $ bash bt_quick_start.sh
+⚠️ ВАЖНО: инициировать pair нужно ТОЛЬКО С ОДНОЙ СТОРОНЫ.
+Если обе Pi одновременно жмут "pair" друг на друга — будет гонка
+и "Failed to pair: org.bluez.Error.AuthenticationFailed".
 
-ИЛИ вручную:
+На Pi-СЛУШАТЕЛЕ (например bropi/robotA) — просто ждём, НЕ жмём pair:
+   $ bluetoothctl
+   [bluetoothctl]> agent on
+   [bluetoothctl]> default-agent
+   (оставить открытым и ждать)
 
-На СЕРВЕРЕ:
-  $ python3 bt_test_auto.py --server robotB
+На Pi-ИНИЦИАТОРЕ (например bropi2/robotB) — сканируем и сопрягаем:
+   $ bluetoothctl
+   [bluetoothctl]> agent on
+   [bluetoothctl]> default-agent
+   [bluetoothctl]> scan on
+   (подождать 10-15с, пока не появится [NEW] Device <адрес другой Pi>)
+   [bluetoothctl]> scan off
+   [bluetoothctl]> pair <BD_ADDR_СЛУШАТЕЛЯ>
 
-На КЛИЕНТЕ (в другом терминале на другом Pi):
-  $ python3 bt_test_auto.py --client robotA
+На обеих появится запрос:
+   [agent] Confirm passkey NNNNNN (yes/no):
+Введите yes на ОБЕИХ Pi (passkey должен совпадать на обеих!).
+
+После "Pairing successful" на обеих Pi выполните:
+   [bluetoothctl]> trust <BD_ADDR_ДРУГОЙ_PI>
+   [bluetoothctl]> quit
+
+Если устройство "not available" при pair — сначала scan on/off чтобы
+обновить кэш (BlueZ забывает устройства из поля видимости).
 
 
-3️⃣  ПОДРОБНЫЙ ТЕСТ (если адреса известны явно)
+3️⃣  ЗАПУСК ТЕСТА
 ──────────────────────────────────────────────────────────────────────────────
 
-На СЕРВЕРЕ:
-  $ python3 bt_test.py --server --target-device robotB --bd-addr AA:BB:CC:DD:EE:FF
+Узнать свой BD-адрес (нужен клиенту):
+   $ sudo hciconfig | grep "BD Address"
 
-На КЛИЕНТЕ:
-  $ python3 bt_test.py --client --target-device robotA --bd-addr 11:22:33:44:55:66
+На Pi-СЕРВЕРЕ (например robotA):
+   $ cd ~/Documents/RC/Pi5_files
+   $ sudo python3 bt_simple_test.py --server robotB
+
+На Pi-КЛИЕНТЕ (например robotB):
+   $ cd ~/Documents/RC/Pi5_files
+   $ sudo python3 bt_simple_test.py --client robotA
+
+(адрес берётся из device/device_id.local.json → peers.<id>.bd_addr,
+ либо явно: --force-addr AA:BB:CC:DD:EE:FF)
+
+Оба скрипта запускаются С SUDO (нужны права на Bluetooth-сокет).
 
 
-4️⃣  ПРОВЕРКА ТЕКУЩЕГО КОНФИГА
+4️⃣  ХРАНЕНИЕ АДРЕСОВ В КОНФИГЕ
 ──────────────────────────────────────────────────────────────────────────────
 
-  $ python3 bt_setup.py --config        # Показать device_id.local.json
-  $ python3 bt_setup.py --list          # Сопряжённые устройства
-  $ bluetoothctl show                   # Статус Bluetooth (Linux)
+device/device_id.local.json на каждой Pi, например на robotA (bropi):
+{
+  "id": "robotA",
+  "type": "robot",
+  "target_host": null,
+  "peers": {
+    "robotB": {
+      "bd_addr": "2C:CF:67:5C:F0:F6"
+    }
+  }
+}
+
+Сохранить через утилиту:
+   $ python3 bt_setup.py --save-peer robotB 2C:CF:67:5C:F0:F6
 
 
-5️⃣  ТИПИЧНЫЙ WORKFLOW
+5️⃣  ЕСЛИ ЧТО-ТО НЕ РАБОТАЕТ (по шагам диагностики)
 ──────────────────────────────────────────────────────────────────────────────
 
-Первый день:
-  1. На каждом Pi: python3 bt_setup.py --scan
-  2. Запомните адреса (AA:BB:CC:DD:EE:FF формат)
-  3. На каждом Pi: python3 bt_setup.py --pair <адрес_другого>
-  4. На каждом Pi: python3 bt_setup.py --save-peer <имя_другого> <адрес>
+❌ bt_setup.py --scan ничего не находит
+  → sudo systemctl status bluetooth (должен быть active/running)
+  → sudo hciconfig (hci0 должен быть UP RUNNING, если DOWN: hciconfig hci0 up)
 
-Дальше каждый раз:
-  1. На сервере: python3 bt_test_auto.py --server robotB
-  2. На клиенте: python3 bt_test_auto.py --client robotA
+❌ "Device not available" при pair
+  → Устройство выпало из кэша BlueZ. Сделать scan on, подождать,
+    увидеть [NEW] Device, потом scan off и повторить pair.
+
+❌ "Failed to pair: AuthenticationFailed"
+  → Сопряжение инициировано с ОБЕИХ сторон одновременно. Повторить,
+    но pair жать только на ОДНОЙ Pi (см. раздел 2).
+
+❌ "bad bluetooth address" (OSError при bind)
+  → В Python: sock.bind(("", channel)) не работает на RPi.
+    Нужно sock.bind((socket.BDADDR_ANY, channel)).
+
+❌ "[Errno 13] Permission denied" при connect/bind
+  → Запускать скрипт с sudo.
+
+❌ "[Errno 22] Invalid argument" при setsockopt BT_SECURITY
+  → Структура bt_security — 2 байта (level + key_size), не 1:
+    struct.pack("BB", level, 0), не struct.pack("B", level).
+
+❌ "[Errno 110] Connection timed out" на клиенте
+  → Проверить базовую связь: sudo l2ping -c 3 <BD_ADDR>.
+    Если l2ping тоже не проходит — Bluetooth-связь не установлена
+    физически (далеко, помехи, не включён на другой стороне).
+  → Если l2ping проходит, а RFCOMM всё равно таймаутит — скорее всего
+    не хватает compat-режима bluetoothd и/или SDP-записи (раздел 1б,1в).
+
+❌ "[Errno 111] Connection refused" мгновенно
+  → Сервер не слушает, либо нет зарегистрированного SDP-сервиса
+    на этом канале (sudo sdptool add --channel=1 SP на СЕРВЕРЕ),
+    либо устройства ещё не "Paired: yes" (bluetoothctl info <addr>).
+
+❌ "[Errno 112] Host is down"
+  → Базовая Bluetooth-связь потеряна (часто после restart bluetooth).
+    Сбросить интерфейс:
+    sudo hciconfig hci0 down && sudo hciconfig hci0 up
+    sudo hciconfig hci0 piscan
+    Проверить sudo l2ping -c 3 <BD_ADDR> снова.
+
+❌ sdptool browse local: "Failed to connect to SDP server... No such
+   file or directory"
+  → compat-режим bluetoothd не применился на этой Pi. Проверить
+    /etc/systemd/system/bluetooth.service.d/override.conf существует
+    и содержит правильные 3 строки, затем daemon-reload + restart.
 
 
-6️⃣  ПЕРЕМЕННЫЕ СРЕДЫ / ПАРАМЕТРЫ
+6️⃣  ПОЛНЫЙ ПОРЯДОК ДЕЙСТВИЙ С НУЛЯ (если что-то сломалось)
 ──────────────────────────────────────────────────────────────────────────────
 
---channel N           — RFCOMM канал (по умолчанию 1)
---force-addr ADDR     — явный адрес вместо загрузки из конфига
---timeout N           — таймаут соединения (секунды)
+На ОБЕИХ Pi:
+  1. sudo systemctl restart bluetooth
+  2. sudo hciconfig hci0 up && sudo hciconfig hci0 piscan
+  3. sudo sdptool add --channel=1 SP
+  4. sudo l2ping -c 3 <адрес другой Pi>   # должно быть 0% loss
+
+Потом сопряжение (раздел 2, инициатор — ОДНА сторона), потом тест
+(раздел 3).
 
 
-7️⃣  ЕСЛИ ЧТО-ТО НЕ РАБОТАЕТ
+7️⃣  ПРОВЕРКА ТЕКУЩЕГО СОСТОЯНИЯ
 ──────────────────────────────────────────────────────────────────────────────
 
-❌ "Connection refused"
-  → Убедитесь, что сервер запущен первым
-  → Проверьте адреса (bluetoothctl paired-devices)
-  → Может понадобиться повторное сопряжение
-
-❌ "No module named 'socket'"
-  → python3 bt_setup.py --list (проверьте что работает)
-  → Возможно нужны зависимости: sudo apt-get install python3-bluez bluez-tools
-
-❌ Низкая скорость
-  → Это нормально для RFCOMM (~100-200 пак/сек)
-  → Для более высокой скорости рассмотрите SPP или BLE
-
-❌ "No such file or directory" для device_id.local.json
-  → Убедитесь что файл есть: ls -la ../device/
-  → Если нет: скопируйте device_id.defaults.json и отредактируйте
+  $ sudo hciconfig                      # статус адаптера (UP RUNNING?)
+  $ bluetoothctl info <BD_ADDR>         # Paired/Bonded/Connected: yes/no
+  $ bluetoothctl paired-devices         # список сопряжённых
+  $ sudo sdptool browse local           # какие сервисы зарегистрированы
+  $ python3 bt_setup.py --config        # device_id.local.json текущей Pi
 
 
 8️⃣  ФАЙЛЫ В ЭТОЙ ПАПКЕ
 ──────────────────────────────────────────────────────────────────────────────
 
-bt_test.py           — Основной тест (явные адреса)
-bt_test_auto.py      — Тест с автоматической загрузкой адресов
-bt_setup.py          — Утилита для настройки (сканирование, сопряжение)
-bt_quick_start.sh    — Интерактивное меню
-BT_README.md         — Полная документация
-BT_QUICK.txt         — Эта шпаргалка
+bt_simple_test.py    — ✅ РАБОЧИЙ тест (используйте этот)
+bt_setup.py           — утилита: scan/pair/list/save-peer/config
+bt_test.py            — ⚠️ черновик, bind падал с "bad bluetooth address"
+bt_test_auto.py       — ⚠️ черновик, та же проблема + не решал RFCOMM refuse
+bt_test_rfcomm.py     — ⚠️ черновик через /dev/rfcomm, не доведён до работы
+bt_quick_start.sh     — интерактивное меню (использует старые bt_test_auto.py)
+BT_README.md          — старая документация (требует обновления)
+BT_QUICK.txt          — эта шпаргалка (актуальная)
 
 
-9️⃣  ЧТО ТЕСТИРУЕТСЯ
+9️⃣  ЧТО ТЕСТИРУЕТ bt_simple_test.py
 ──────────────────────────────────────────────────────────────────────────────
 
-✓ Соединение RFCOMM между двумя Pi
-✓ PING/PONG (проверка отклика)
-✓ Быстрый обмен данными позиции (x, y, yaw)
-✓ Пропускная способность (100 пакетов подряд)
+Простой обмен: клиент отправляет "Test 0".."Test 4" текстом,
+сервер отвечает "OK" на каждое сообщение. 5 итераций с паузой 0.1-0.2с.
 
-Примеры данных:
-  PING: 5 байт (заголовок + номер)
-  DATA: 13 байт (заголовок + seq + x,y,yaw как 3 float)
-  Ожидается: ~100-200 пакетов в секунду
+Это МИНИМАЛЬНЫЙ рабочий тест соединения — не включает PING/PONG,
+обмен (x,y,yaw) и тест скорости из черновиков. Если нужно гонять
+реальные данные позиции — протокол из bt_test_rfcomm.py /
+bt_test_auto.py (struct pack 'Ifff' и т.п.) можно перенести в
+bt_simple_test.py, он теперь на рабочей основе.
 
 
-🔟 ПРИМЕРЫ ВЫВОДА
+🔟 ПРИМЕР УСПЕШНОГО ВЫВОДА
 ──────────────────────────────────────────────────────────────────────────────
 
-Сервер успешно:
-  [robotA] Запуск Bluetooth сервера, канал 1
-    Ожидание подключения от robotB...
-    ✓ Подключено: ('AA:BB:CC:DD:EE:FF', 0)
-  [robotA] СЕРВЕР — начало теста...
-    ← PING #0 (5 байт)
-    → PONG #0
-    ...
+Сервер (robotA):
+  ID=robotA
+  [robotA] Запуск BT сервера на канале 1...
+    Слушаю на канале 1...
+    ✓ Подключено: ('2C:CF:67:5C:F0:F6', 1)
 
-Клиент успешно:
-  [robotB] Запуск Bluetooth клиента
-    Подключение к robotA (11:22:33:44:55:66) на канале 1...
-    ✓ Подключено к robotA
-  [robotB] КЛИЕНТ — начало теста...
-    === PING/PONG ===
-    → PING #0
-    ← PONG #0 ✓
-    ...
-    === Тест скорости (100 пакетов) ===
-    Отправлено: 100 пакетов за 0.523с (191.2 пак/сек)
+    === Тест ===
+    ← Получено: 6 байт
+    → Отправлено: OK
+    ... (x5)
+
+    ✓ Тест завершён
+
+Клиент (robotB):
+  ID=robotB
+  [robotB] Подключение к D8:3A:DD:F0:D1:B5 на канале 1...
+    ✓ Подключено
+
+    === Тест ===
+    → Отправлено: Test 0
+    ← Получено: OK
+    ... (x5)
+
+    ✓ Тест завершён
 
 ================================================================================
